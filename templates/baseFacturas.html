@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Bienvenido{% endblock %}</title>
+    <style>
+        nav {
+            background: #f0f0f0;
+            padding: 10px;
+        }
+        nav a {
+            margin: 0 15px;
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+        nav a:hover {
+            color: #007bff;
+        }
+    </style>   
+</head>
+<body>
+    <nav>
+        <a href="{{ url_for('index') }}">Inicio</a>
+        <a href="{{ url_for('facturas.facturas') }}">Facturas</a>
+        <a href="{{ url_for('inventario.inventario_home') }}">Inventario</a>
+        <a href="{{ url_for('ion.ion_home') }}">ION</a>
+        <a href="{{ url_for('configuracion') }}">Configuración</a>
+    
+    </nav>
+    {% block content %}{% endblock %}
+</body>
+</html>

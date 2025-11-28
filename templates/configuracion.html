@@ -1,0 +1,84 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Settings {% endblock %} 
+
+{% block content %}
+<!-- PRIMERA PARTE -->
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-4">General information</h2>
+        <!-- ...tu primera parte aquí... -->
+    </div>
+
+    <!-- SEGUNDA PARTE ADAPTADA -->
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-4">Configuración avanzada</h2>
+        <form action="" method="post" class="mb-4">
+            <input type="hidden" name="accion" value="crear_bd">
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    <label for="nombre_db" class="form-label">Nombre Base de Datos</label>
+                    <input type="text" id="nombre_db" name="nombre_db" class="form-control" required value="{{ nombre_db }}">
+                </div>
+                <div class="col-md-4 mb-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Crear Base de Datos</button>
+                </div>
+            </div>
+        </form>
+
+        <form action="" method="post">
+            <input type="hidden" name="accion" value="guardar_config">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="email_revision" class="form-label">Email de Revisión</label>
+                    <input type="email" id="email_revision" name="email_revision" class="form-control" required value="{{ email_revision }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="token_contraseña" class="form-label">Token Contraseña</label>
+                    <input type="password" id="token_contraseña" name="token_contraseña" class="form-control" required value="{{ token_contraseña }}">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="correos_varios" class="form-label">Listado de Varios Correos</label>
+                <textarea id="correos_varios" name="correos_varios" rows="4" class="form-control" placeholder="Un correo por línea">{{ correos_varios }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-gray-800 mt-2 animate-up-2">Guardar Configuración</button>
+        </form>
+        {% if mensaje %}
+            <div class="alert alert-info mt-3">{{ mensaje }}</div>
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="btn btn-link mt-3">Volver al inicio</a>
+    </div>
+
+    <!-- TERCERA PARTE: EJECUTAR SQL -->
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-4">Ejecutar SQL Manualmente</h2>
+        <form action="" method="post">
+            <input type="hidden" name="accion" value="ejecutar_sql">
+            <div class="mb-3">
+                <label for="sql_query" class="form-label">Consulta SQL</label>
+                <textarea id="sql_query" name="sql_query" rows="4" 
+                        class="form-control" placeholder="Escribe aquí tu sentencia SQL...">{{ sql_query or '' }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-danger mt-2">
+                Ejecutar SQL
+            </button>
+        </form>
+
+        {% if sql_result %}
+            <div class="alert alert-success mt-3">
+                <pre>{{ sql_result }}</pre>
+            </div>
+        {% elif sql_error %}
+            <div class="alert alert-danger mt-3">
+                <pre>{{ sql_error }}</pre>
+            </div>
+        {% endif %}
+    </div>
+
+{% endblock content %}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}{% endblock stylesheets %}
+
+<!-- Specific Page JS goes HERE  -->
+{% block javascripts %}{% endblock javascripts %}

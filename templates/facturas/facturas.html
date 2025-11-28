@@ -1,0 +1,248 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Facturas{% endblock %}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+    <h1>Sección Facturas</h1>
+    <p>Bienvenido, {{ usuario }}. Aquí puedes gestionar tus facturas.</p>
+    
+    
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-4">Descargar Facturas del Correo</h2>
+        <form method="post">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label for="fecha_desde" class="form-label">Fecha desde:</label>
+                    <input type="date" id="fecha_desde" name="fecha_desde" value="{{ fecha_desde }}" class="form-control">
+                </div>
+                <div class="col-md-4">
+                    <label for="fecha_hasta" class="form-label">Fecha hasta:</label>
+                    <input type="date" id="fecha_hasta" name="fecha_hasta" value="{{ fecha_hasta }}" class="form-control">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-secondary w-100">Descargar Facturas</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    
+    
+
+    {% if mensaje %}
+        <p>{{ mensaje }}</p>
+    {% endif %}
+    <!-- Filtros de búsqueda -->
+    <div class="mb-3">
+        <div class="row g-2">
+            <div class="col-md-2">
+                <input type="text" id="filtroIdFactura" placeholder="ID Factura" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <input type="text" id="filtroProveedor" placeholder="Proveedor" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <input type="date" id="filtroFechaDesde" placeholder="Desde" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <input type="date" id="filtroFechaHasta" placeholder="Hasta" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <select id="filtroEstado" class="form-select">
+                    <option value="">Todos</option>
+                    <option value="procesada">Procesada</option>
+                    <option value="sin procesar">Sin procesar</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <button id="btnFiltrar" class="btn btn-primary w-100">Buscar</button>
+            </div>
+            <div class="col-md-1">
+                <button id="btnLimpiarFiltros" class="btn btn-secondary w-100">Limpiar</button>
+            </div>
+        </div>
+    </div>
+    <div class="card card-body border-0 shadow table-wrapper table-responsive">
+      <table class="table table-hover">
+          <thead>
+              <tr>
+                  <th class="border-gray-200"># id_factura</th>
+                  <th class="border-gray-200">Proveedor</th>						
+                  <th class="border-gray-200">Fecha</th>
+                  <th class="border-gray-200">Total</th>
+                  <th class="border-gray-200">Estado</th>
+                  <th class="border-gray-200">Accion</th>
+              </tr>
+          </thead>
+            <tbody id="tablaFacturas">
+                {% for id_factura, proveedor, fecha, valor_total, ubicacion_pdf, total_articulos, articulos_sin_procesar in facturas_list %}
+                {% set pdf_filename = ubicacion_pdf.split('/')[-1] %}
+                <tr>
+                    <td><a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" class="fw-bold">{{ id_factura }}</a></td>
+                    <td><span class="fw-normal">{{ proveedor }}</span></td>
+                    <td><span class="fw-normal">{{ fecha }}</span></td>   
+                    <td><span class="fw-bold">$ {{ valor_total }}</span></td>
+                    <td>
+                        {% if articulos_sin_procesar == 0 %}
+                            <span class="badge bg-success">Procesada</span>
+                        {% elif articulos_sin_procesar == total_articulos %}
+                            <span class="badge bg-danger">Sin procesar</span>
+                        {% else %}
+                            <span class="badge bg-warning">{{ articulos_sin_procesar }} Sin procesar</span>
+                        {% endif %}
+                    </td>
+                    <td> 
+                        <a href="{{ url_for('facturas.ver_pdf', filename=pdf_filename) }}" target="_blank" class="btn btn-primary">Ver PDF</a>
+                        <a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" target="_blank" class="btn btn-secondary">Ver Detalle</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginación -->
+    <div class="card-footer px-3 border-0 d-flex flex-column flex-lg-row align-items-center justify-content-between">
+        <nav aria-label="Page navigation example">
+            <ul class="pagination mb-0" id="pagination"></ul>
+        </nav>
+        <div class="fw-normal small mt-4 mt-lg-0" id="infoPaginacion"></div>
+    </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const todasFilas = Array.from(document.querySelectorAll('#tablaFacturas tr'));
+    const filasPorPagina = 30;
+    let paginaActual = 1;
+    let filasVisibles = [...todasFilas];
+
+    function mostrarPagina(pagina) {
+        const inicio = (pagina - 1) * filasPorPagina;
+        const fin = inicio + filasPorPagina;
+
+        todasFilas.forEach(fila => fila.style.display = 'none');
+        filasVisibles.slice(inicio, fin).forEach(fila => fila.style.display = '');
+
+        paginaActual = pagina;
+        renderPaginacion();
+    }
+
+    function renderPaginacion() {
+        const totalPaginas = Math.ceil(filasVisibles.length / filasPorPagina);
+        const paginacion = document.getElementById('pagination');
+        const info = document.getElementById('infoPaginacion');
+
+        if (totalPaginas === 0) {
+            paginacion.innerHTML = '';
+            info.innerHTML = 'No hay coincidencias';
+            return;
+        }
+
+        let html = `
+            <li class="page-item ${paginaActual === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#">Anterior</a>
+            </li>
+        `;
+
+        const rango = 2;
+        const mostrarEllipsis = totalPaginas > 7;
+
+        for (let i = 1; i <= totalPaginas; i++) {
+            if (
+                i === 1 || i === totalPaginas ||
+                (i >= paginaActual - rango && i <= paginaActual + rango)
+            ) {
+                html += `
+                    <li class="page-item ${paginaActual === i ? 'active' : ''}">
+                        <a class="page-link" href="#">${i}</a>
+                    </li>
+                `;
+            } else if (mostrarEllipsis && (i === 2 && paginaActual > rango + 2)) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            } else if (mostrarEllipsis && (i === totalPaginas - 1 && paginaActual < totalPaginas - (rango + 1))) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+        }
+
+        html += `
+            <li class="page-item ${paginaActual === totalPaginas ? 'disabled' : ''}">
+                <a class="page-link" href="#">Siguiente</a>
+            </li>
+        `;
+
+        paginacion.innerHTML = html;
+        info.innerHTML = `Página ${paginaActual} de ${totalPaginas} (${filasVisibles.length} registros)`;
+
+        document.querySelectorAll('#pagination .page-link').forEach((btn) => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (btn.textContent === 'Anterior' && paginaActual > 1) mostrarPagina(paginaActual - 1);
+                else if (btn.textContent === 'Siguiente' && paginaActual < totalPaginas) mostrarPagina(paginaActual + 1);
+                else if (!isNaN(parseInt(btn.textContent))) mostrarPagina(parseInt(btn.textContent));
+            });
+        });
+    }
+
+    function filtrar() {
+        const idFiltro = document.getElementById('filtroIdFactura').value.toLowerCase();
+        const proveedorFiltro = document.getElementById('filtroProveedor').value.toLowerCase();
+        const fechaDesde = document.getElementById('filtroFechaDesde').value;
+        const fechaHasta = document.getElementById('filtroFechaHasta').value;
+        const estadoFiltro = document.getElementById('filtroEstado').value.toLowerCase();
+
+        filasVisibles = todasFilas.filter(fila => {
+            const id = fila.querySelector('td a.fw-bold')?.textContent.toLowerCase() || '';
+            const spans = fila.querySelectorAll('td span.fw-normal');
+            const proveedor = spans[0]?.textContent.toLowerCase() || '';
+            const fecha = spans[1]?.textContent.trim() || '';
+            const estado = spans[2]?.textContent.toLowerCase() || '';
+
+            if (idFiltro && !id.includes(idFiltro)) return false;
+            if (proveedorFiltro && !proveedor.includes(proveedorFiltro)) return false;
+            if (fechaDesde && fecha < fechaDesde) return false;
+            if (fechaHasta && fecha > fechaHasta) return false;
+            if (estadoFiltro && estado !== estadoFiltro) return false;
+
+            return true;
+        });
+
+        mostrarPagina(1);
+    }
+
+    // ---- Filtros automáticos ----
+    document.querySelectorAll('#filtroIdFactura, #filtroProveedor, #filtroFechaDesde, #filtroFechaHasta, #filtroEstado')
+        .forEach(input => {
+            input.addEventListener('input', filtrar);   // texto
+            input.addEventListener('change', filtrar);  // selects / fechas
+        });
+
+    // Botón "Buscar" (opcional, ya no es necesario)
+    const btnFiltrar = document.getElementById('btnFiltrar');
+    if (btnFiltrar) {
+        btnFiltrar.addEventListener('click', function(e) {
+            e.preventDefault();
+            filtrar();
+        });
+    }
+
+    // Botón "Limpiar filtros"
+    document.getElementById('btnLimpiarFiltros').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.getElementById('filtroIdFactura').value = '';
+        document.getElementById('filtroProveedor').value = '';
+        document.getElementById('filtroFechaDesde').value = '';
+        document.getElementById('filtroFechaHasta').value = '';
+        document.getElementById('filtroEstado').value = '';
+        filasVisibles = [...todasFilas];
+        mostrarPagina(1);
+    });
+
+    mostrarPagina(1);
+});
+</script>
+
+
+
+{% endblock %}

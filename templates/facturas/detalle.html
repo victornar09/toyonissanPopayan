@@ -1,0 +1,182 @@
+{% extends "layouts/fullscreen.html" %}
+
+{% block title %}Detalle de Factura{% endblock %}
+
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+
+<h2>Detalle de Factura</h2>
+{% if factura %}
+    <p><strong>Proveedor:</strong> {{ factura[0] }}</p>
+    <p><strong>Fecha:</strong> {{ factura[1] }}</p>
+    <p><strong>Valor Total:</strong> $ {{ "{:,.0f}".format(factura[2]) }}</p>
+    
+    <div class="card card-body border-0 shadow table-wrapper table-responsive">
+        <form method="post" id="formInventario">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th class="border-gray-200">
+                            <input type="checkbox" id="selectAll">
+                        </th>
+                        <th class="border-gray-200">Descripción</th>
+                        <th class="border-gray-200">Valor Público (Ajustable)</th>
+                        <th class="border-gray-200">Cantidad Ingresada</th>						
+                        <th class="border-gray-200">Valor Unitario</th>    
+                        <th class="border-gray-200">Valor + IVA</th>  
+                        
+                    </tr>
+                </thead>
+                <tbody id="tablaFacturas">
+                    {% for item in items_factura %}
+                        {% set descripcion = item[0] %}
+                        {% set cantidad = item[1] %}
+                        {% set valor_unitario = item[2] %}
+                        {% set inventariado = item[3] %}  {# <-- nuevo campo booleano #}
+
+                        {% set valor_iva = valor_unitario * 1.19 %}
+                        {% set valor_publico_sugerido = (valor_unitario * 1.69) | round(-3) %}
+                    <tr class="{% if inventariado %}table-success{% endif %}">
+                        <td>
+                            <input 
+                                type="checkbox" 
+                                class="itemCheckbox" 
+                                name="seleccionados" 
+                                value="{{ loop.index }}" 
+                                {% if inventariado %}disabled{% endif %}>
+                        </td>
+                        <td>
+                            <input 
+                                type="text" 
+                                name="descripcion" 
+                                class="form-control"
+                                value="{{ descripcion }}" 
+                                {% if inventariado %}readonly{% endif %}>
+                        </td>
+                        <td>
+                            <input 
+                                type="text" 
+                                name="valor_publico" 
+                                class="form-control valor-publico"
+                                value="{{ "{:,.0f}".format(valor_publico_sugerido).replace(",", ".") }}"
+                                {% if inventariado %}readonly{% endif %}>
+                        </td>
+                        <td><span class="fw-normal">{{ cantidad }}</span></td>   
+                        <td><span class="fw-bold">$ {{ "{:,.0f}".format(valor_unitario).replace(",", ".") }}</span></td>
+                        <td><span class="fw-bold">$ {{ "{:,.0f}".format(valor_iva).replace(",", ".") }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Contador y botón -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <span id="contadorSeleccion">Inventariar 0 ítems</span>
+                <button type="submit" class="btn btn-primary">Inventariar seleccionados</button>
+            </div>
+        </form>
+    </div>
+
+{% else %}
+    <p>No se encontró la factura.</p>
+{% endif %}
+
+<!-- Script para manejar selección -->
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const selectAll = document.getElementById("selectAll");
+        const contador  = document.getElementById("contadorSeleccion");
+        const valorPublicoInputs = document.querySelectorAll(".valor-publico");
+
+        // —— Utilidades ——
+        function getCheckboxes() {
+            return Array.from(document.querySelectorAll(".itemCheckbox")); // <-- coincide con tu HTML
+        }
+        function formatearMiles(numStr) {
+            // numStr es cadena de dígitos
+            return numStr.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        }
+        function redondearMiles(num) {
+            return Math.round(num / 1000) * 1000;
+        }
+        function actualizarContador() {
+            const cbs = getCheckboxes();
+            const seleccionados = cbs.filter(cb => cb.checked).length;
+            contador.textContent = `Inventariar ${seleccionados} ítem${seleccionados === 1 ? "" : "s"}`;
+            // Actualiza estado del "Seleccionar todo"
+            const allChecked = cbs.length > 0 && seleccionados === cbs.length;
+            selectAll.checked = allChecked;
+            selectAll.indeterminate = !allChecked && seleccionados > 0;
+        }
+
+        // —— Bloquear Enter globalmente ——
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") e.preventDefault();
+        });
+
+        // —— Select All ——
+        if (selectAll) {
+            selectAll.addEventListener("change", function () {
+                const cbs = getCheckboxes();
+                cbs.forEach(cb => { cb.checked = selectAll.checked; });
+                actualizarContador();
+            });
+        }
+
+        // —— Escuchar cambios de cada checkbox de fila ——
+        getCheckboxes().forEach(cb => {
+            cb.addEventListener("change", actualizarContador);
+        });
+
+        // —— Inicializa contador al cargar ——
+        actualizarContador();
+
+        // —— Inputs de Valor Público: formato y comportamiento ——
+        valorPublicoInputs.forEach(input => {
+            // Normaliza valor inicial: extrae dígitos, redondea a miles y formatea con puntos
+            let inicial = parseInt((input.value || "").replace(/\D/g, "")) || 0;
+            inicial = redondearMiles(inicial);
+            input.value = formatearMiles(String(inicial));
+            input.dataset.edited = "false"; // aún no escribió
+
+            // Borrar solo cuando se presiona la PRIMERA tecla numérica
+            input.addEventListener("keydown", function (e) {
+                // Permitir teclas de control
+                const controlKeys = ["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"];
+                const esNumero = /^[0-9]$/.test(e.key);
+
+                if (!esNumero && !controlKeys.includes(e.key)) {
+                    e.preventDefault();
+                    return;
+                }
+
+                if (this.dataset.edited === "false" && esNumero) {
+                    this.value = "";
+                    this.dataset.edited = "true";
+                }
+            });
+
+            // Formateo en tiempo real
+            input.addEventListener("input", function () {
+                const digitos = this.value.replace(/\D/g, "");
+                if (digitos === "") {
+                    this.value = "";
+                    return;
+                }
+                this.value = formatearMiles(digitos);
+            });
+
+            // Al salir, redondear a miles y formatear
+            input.addEventListener("blur", function () {
+                let numero = parseInt(this.value.replace(/\D/g, "")) || 0;
+                numero = redondearMiles(numero);
+                this.value = formatearMiles(String(numero));
+                // Si no escribió nada (quedó vacío), marca como no editado
+                if (numero === 0) this.dataset.edited = "false";
+            });
+        });
+    });
+</script>
+
+{% endblock content %}
