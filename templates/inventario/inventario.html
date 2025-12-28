@@ -42,7 +42,7 @@
           </tr>
       </thead>
       <tbody id="tablaInventario">
-          {% for codigoBarras, descripcion, cantidad, precioVenta, grupo in items %}
+          {% for id, codigoBarras, descripcion, cantidad, precioVenta, precioVentaCifrado, precioMaxDescuento, grupo in items %}
           <tr>
               <td><span class="fw-bold">{{ codigoBarras }}</span></td>
               <td><span class="fw-normal">{{ descripcion }}</span></td>
@@ -50,8 +50,14 @@
               <td><span class="fw-bold">$ {{ precioVenta }}</span></td>
               <td><span class="fw-normal">{{ grupo }}</span></td> 
               <td>
-                    <button class="btn btn-success" onclick="imprimirBT('{{ row.codigo }}', '{{ row.descripcion }}', '{{ row.precio }}')">
-                        Imprimir
+                    <button type="button" class="btn btn-primary btn-editar"
+                        data-id="{{ id }}"
+                        data-codigo="{{ codigoBarras }}"
+                        data-descripcion="{{ descripcion }}"
+                        data-cantidad="{{ cantidad }}"
+                        data-precio="{{ precioVenta }}"
+                        data-grupo="{{ grupo }}">
+                        ||||
                     </button>
               </td>
           </tr>
@@ -67,6 +73,77 @@
   <div class="fw-normal small mt-4 mt-lg-0" id="infoPaginacion"></div>
 </div>
 
+<!-- MODAL FLOTANTE PARA EDITAR -->
+<div class="modal fade" id="modalEditar" tabindex="-1" aria-labelledby="modalEditarLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalEditarLabel">Editar Item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formEditarItem">
+          <input type="hidden" id="itemId">
+          
+          <div class="mb-3">
+            <label for="codigoBarrasEdit" class="form-label">Código Barras</label>
+            <input type="text" class="form-control" id="codigoBarrasEdit" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label for="descripcionEdit" class="form-label">Descripción</label>
+            <input type="text" class="form-control" id="descripcionEdit">
+          </div>
+
+          <div class="mb-3">
+            <label for="cantidadEdit" class="form-label">Cantidad</label>
+            <input type="number" class="form-control" id="cantidadEdit">
+          </div>
+
+          <div class="mb-3">
+            <label for="precioEdit" class="form-label">Precio Venta</label>
+            <input type="number" class="form-control" id="precioEdit" step="0.01">
+          </div>
+
+          <div class="mb-3">
+            <label for="grupoEdit" class="form-label">Grupo</label>
+            <input type="text" class="form-control" id="grupoEdit">
+          </div>
+
+          
+
+          <!-- Sección de impresión -->
+          <div id="seccionImpresion" style="display: none;" class="border-top pt-3 mt-3">
+                <h6>Impresión</h6>
+                <div id="seccionCantidadImprimir" style="display: none;" class="mb-3">
+                    <label for="cantidadImprimir" class="form-label">Cantidad a Imprimir</label>
+                    <input type="number" class="form-control" id="cantidadImprimir" min="1" value="1">
+                </div>
+
+                <div id="seccionColumna" style="display: none;" class="mb-3">
+                    <label for="columnaInicio" class="form-label">Columna de Inicio</label>
+                    <select id="columnaInicio" class="form-control">
+                        <option value="1">Columna 1</option>
+                        <option value="2">Columna 2</option>
+                    </select>
+                </div>
+          </div>
+
+          
+
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-info" id="btnImprimirModal">Imprimir</button>
+        <button type="button" class="btn btn-success" id="btnGuardarItem">Guardar Cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -74,33 +151,134 @@ document.addEventListener('DOMContentLoaded', function() {
     const filasPorPagina = 30;
     let paginaActual = 1;
     let filasVisibles = [...todasFilas];
+    let estadoImpresion = {}; // {id: 'esperandoCantidad' o 'listo'}
 
-    window.imprimirBT = async function(codigo, descripcion, precio) {
-        const cantidad = 1;        // Puedes abrir un prompt si quieres: prompt("Cantidad?")
-        const columna = 1;         // Igual podrías preguntar: prompt("Columna 1 o 2?")
+    // Variables para el modal
+    let modalEditar = new bootstrap.Modal(document.getElementById('modalEditar'), {
+        backdrop: 'static',
+        keyboard: false
+    });
 
-        const payload = {
-            codigo: codigo,
-            descripcion: descripcion,
-            precio: precio,
-            cantidad: cantidad,
-            columna_inicio: columna
-        };
+    window.abrirModalEditar = function(id, codigo, descripcion, cantidad, precio, grupo) {
+        document.getElementById('itemId').value = id;
+        document.getElementById('codigoBarrasEdit').value = codigo;
+        document.getElementById('descripcionEdit').value = descripcion;
+        document.getElementById('cantidadEdit').value = cantidad;
+        document.getElementById('precioEdit').value = precio;
+        document.getElementById('grupoEdit').value = grupo;
+        
+        estadoImpresion[id] = 'esperandoCantidad'; // Resetear estado
+        document.getElementById('seccionImpresion').style.display = 'none';
+        document.getElementById('seccionCantidadImprimir').style.display = 'none';
+        document.getElementById('seccionColumna').style.display = 'none';
+        document.getElementById('cantidadImprimir').value = 1;
+        document.getElementById('columnaInicio').value = '1';
+        document.getElementById('btnImprimirModal').textContent = 'Imprimir';
+        
+        modalEditar.show();
+    };
 
-        const res = await fetch("/inventario/imprimir_etiqueta", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+    // GUARDAR CAMBIOS
+    document.getElementById('btnGuardarItem').addEventListener('click', async function() {
+        const id = document.getElementById('itemId').value;
+        const descripcion = document.getElementById('descripcionEdit').value;
+        const cantidad = document.getElementById('cantidadEdit').value;
+        const precio = document.getElementById('precioEdit').value;
+        const grupo = document.getElementById('grupoEdit').value;
 
-        const data = await res.json();
-
-        if (data.ok) {
-            alert("Etiqueta enviada a impresión ✔️");
-        } else {
-            alert("Error: " + data.error);
+        if (!descripcion.trim() || !cantidad || !precio) {
+            alert('Por favor completa todos los campos');
+            return;
         }
-    }
+
+        try {
+            const response = await fetch('/inventario/actualizar_item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: id,
+                    descripcion: descripcion,
+                    cantidad: parseInt(cantidad),
+                    precio: parseFloat(precio),
+                    grupo: grupo
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.ok) {
+                alert('Item actualizado correctamente ✔️');
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'No se pudo guardar'));
+            }
+        } catch (error) {
+            alert('Error de conexión: ' + error.message);
+        }
+    });
+
+    // Adjuntar manejador a botones "editar" (evita problemas con comillas en la descripción)
+    document.querySelectorAll('.btn-editar').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const d = btn.dataset;
+            abrirModalEditar(d.id, d.codigo, d.descripcion, d.cantidad, d.precio, d.grupo);
+        });
+    });
+
+    // IMPRESIÓN CON DOS PASOS
+    document.getElementById('btnImprimirModal').addEventListener('click', async function() {
+        const id = document.getElementById('itemId').value;
+        const estado = estadoImpresion[id];
+
+        if (estado === 'esperandoCantidad') {
+            // Primer click: mostrar sección de impresión, cantidad y columna
+            document.getElementById('seccionImpresion').style.display = 'block';
+            document.getElementById('seccionCantidadImprimir').style.display = 'block';
+            document.getElementById('seccionColumna').style.display = 'block';
+            document.getElementById('cantidadImprimir').focus();
+            document.getElementById('btnImprimirModal').textContent = 'Ejecutar Impresión';
+            estadoImpresion[id] = 'listo';
+        } else if (estado === 'listo') {
+            // Segundo click: imprimir
+            const codigo = document.getElementById('codigoBarrasEdit').value;
+            const descripcion = document.getElementById('descripcionEdit').value;
+            const precio = document.getElementById('precioEdit').value;
+            const cantidad = parseInt(document.getElementById('cantidadImprimir').value);
+
+            if (!cantidad || cantidad < 1) {
+                alert('Ingresa una cantidad válida');
+                return;
+            }
+
+            try {
+                const columnaInicio = parseInt(document.getElementById('columnaInicio').value);
+                const response = await fetch('/inventario/imprimir_etiqueta_nueva', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        codigo: codigo,
+                        descripcion: descripcion,
+                        precio: precio,
+                        cantidad: cantidad,
+                        columna_inicio: columnaInicio
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.ok) {
+                    alert(`Imprimiendo ${cantidad} etiqueta(s)... ✔️`);
+                    document.getElementById('seccionCantidadImprimir').style.display = 'none';
+                    document.getElementById('btnImprimirModal').textContent = 'Imprimir';
+                    estadoImpresion[id] = 'esperandoCantidad';
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo imprimir'));
+                }
+            } catch (error) {
+                alert('Error de conexión: ' + error.message);
+            }
+        }
+    });
 
     function mostrarPagina(pagina) {
         const inicio = (pagina - 1) * filasPorPagina;

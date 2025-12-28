@@ -6,6 +6,71 @@ import sqlite3
 import imaplib, email, os, zipfile
 from email.utils import parseaddr
 import xml.etree.ElementTree as ET
+import csv
+import win32com.client
+
+
+
+# def imprimir_varios(productos, columna_inicio=1):
+#     # """
+#     # productos: array de tuplas con estructura:
+#     #     (codigo, descripcion, precio, cantidad)
+#     # columna_inicio: número de columna inicial
+#     # """
+
+#     # # 1) Crear CSV temporal con todos los productos
+#     # ruta_csv = "productos_temp.csv"
+#     # with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
+#     #     writer = csv.writer(f)
+#     #     writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
+#     #     for codigo, descripcion, precio, cantidad in productos:
+#     #         writer.writerow([
+#     #             codigo,
+#     #             descripcion,
+#     #             precio,
+#     #             cantidad,
+#     #             columna_inicio
+#     #         ])
+
+#     # # 2) Abrir BarTender
+#     # bt = win32com.client.Dispatch("BarTender.Application")
+#     # bt.Visible = True
+
+#     # # 3) Abrir plantilla
+#     # formato = bt.Formats.Open(r"Documento1.btw", False, "")
+
+#     # # 4) Conectar el CSV como base de datos
+#     # formato.DatabaseConnections.SetFileName('Conexión 1', ruta_csv)
+
+#     # # 5) Imprimir todos los registros del array
+#     # formato.PrintOut(False, False)
+
+#     # # 6) Cerrar plantilla y BarTender
+#     # formato.Close(0)
+#     # bt.Quit(1)
+    
+
+
+
+
+def imprimir_varios(productos, columna_inicio=1):
+    ruta_csv = os.path.abspath("productos_temp.csv")
+    with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
+        for codigo, descripcion, precio, cantidad in productos:
+            writer.writerow([codigo, descripcion, precio, cantidad, columna_inicio])
+
+
+    bt = win32com.client.Dispatch("BarTender.Application")
+    bt.Visible = True
+
+    formato = bt.Formats.Open(r"Documento1.btw", False, "")
+    formato.PrintOut(False, False)
+
+    #formato.Close(0)
+    #bt.Quit(1)
+
 
 facturas_bp = Blueprint('facturas', __name__, url_prefix='/facturas')
 
@@ -246,6 +311,9 @@ def ver_factura(id_factura):
 
     if request.method == 'POST':
         seleccionados = request.form.getlist('seleccionados')
+
+        print("Seleccionados:", seleccionados)
+        
         valores_publicos = request.form.getlist('valor_publico')
 
         # Mapeo chapineros
@@ -255,23 +323,27 @@ def ver_factura(id_factura):
         }
 
         def cifrar_precio(precio):
-            return "".join(mapa_chapineros.get(d, d) for d in str(int(precio)))
+            return "".join(mapa_chapineros.get(d, d) for d in str(int(precio))).upper()
 
         # Traer datos de inventarioFacturas
         cursor.execute("""
-            SELECT descripcion_item, cantidad, valor_unitario, inventariado
+            SELECT id, descripcion_item, cantidad, valor_unitario, inventariado
             FROM inventarioFacturas
             WHERE id_factura = ?
         """, (id_factura,))
         items_bd = cursor.fetchall()
 
+        print("Items en BD:", items_bd)
+
+        para_imprmir = []
+
         # Insertar seleccionados en inventarioUnico
         for idx in seleccionados:
             idx = int(idx) - 1  # loop.index en Jinja empieza en 1
-            descripcion, cantidad, _ = items_bd[idx]
+            id, descripcion, cantidad, valor_unitario, inventariado = items_bd[idx]
 
             # Obtener precioVenta ingresado
-            precio_str = valores_publicos[idx].replace(".", "").strip()
+            precio_str = str(valores_publicos[idx]).replace(".", "").strip()
             precio_venta = int(precio_str) if precio_str.isdigit() else 0
 
             precio_cifrado = cifrar_precio(precio_venta)
@@ -282,22 +354,67 @@ def ver_factura(id_factura):
             max_id = cursor.fetchone()[0] or 0
             codigo_barras = str(max_id + 1).zfill(8)  # 8 dígitos
 
-            cursor.execute("""
-                INSERT INTO inventarioUnico (
-                    codigoBarras, descripcion, cantidad,
-                    precioVenta, precioVentaCifrado, precioMaxDescuento, grupo
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                codigo_barras,
+            print(codigo_barras,
                 descripcion,
                 cantidad,
                 precio_venta,
                 precio_cifrado,
-                precio_max_desc,
+                precio_max_desc)
+
+            cursor.execute("""
+                INSERT INTO inventarioUnico (
+                descripcion, cantidad,
+                precioVenta, precioVentaCifrado, precioMaxDescuento, grupo
+            )
+            VALUES ( ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(descripcion) DO UPDATE SET
+                
+                cantidad = inventarioUnico.cantidad + excluded.cantidad,
+                precioVenta = excluded.precioVenta,
+                precioVentaCifrado = excluded.precioVentaCifrado,
+                precioMaxDescuento = excluded.precioMaxDescuento,
+                grupo = excluded.grupo;
+            """, (
+                
+                descripcion,
+                cantidad,
+                precio_venta,
+                precio_cifrado,
+                precio_max_desc, 
+                ''
                 ""
             ))
+
+            # Obtener el id del registro recién insertado/actualizado
+            nuevo_id = cursor.lastrowid
+
+            para_imprmir.append(nuevo_id)
+            # Guardar ese id en inventarioFacturas
+            cursor.execute("""
+                UPDATE inventarioFacturas
+                SET inventariado = 1,
+                    id_inventarioUnico = ?
+                WHERE id = ?
+            """, (nuevo_id, id))
+
+            
         conn.commit()
+
+        ids = para_imprmir  # por ejemplo [40, 41]
+        placeholders = ",".join("?" * len(ids)) 
+
+        query = f"""
+            SELECT codigoBarras, descripcion, precioVentaCifrado, inventarioFacturas.cantidad
+            FROM inventarioFacturas
+            LEFT JOIN main.inventarioUnico iU on inventarioFacturas.id_inventarioUnico = iU.id
+            WHERE id_factura = ? AND iU.id IN ({placeholders})
+        """
+        cursor.execute(query, (id_factura, *ids))
+        items_para_imprimir = cursor.fetchall()
+
+        imprimir_varios(items_para_imprimir, columna_inicio=1)
+
+
         conn.close()
         return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
 
@@ -310,7 +427,7 @@ def ver_factura(id_factura):
     factura = cursor.fetchone()
 
     cursor.execute("""
-        SELECT descripcion_item, cantidad, valor_unitario
+        SELECT descripcion_item, cantidad, valor_unitario, inventariado
         FROM inventarioFacturas
         WHERE id_factura = ?
     """, (id_factura,))
