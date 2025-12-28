@@ -89,37 +89,69 @@ def configuracion():
                     conn = sqlite3.connect(ruta_db)
                     cursor = conn.cursor()
                     cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS facturas (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            id_factura TEXT,
-                            fecha datetime,
-                            proveedor TEXT,
-                            valor_total REAL,
-                            correo TEXT,
-                            texto_xml TEXT,
+                                   
+                        create table configuracion
+                        (
+                            id               INTEGER
+                                primary key autoincrement,
+                            nombre_db        TEXT,
+                            email_revision   TEXT,
+                            token_contraseña TEXT,
+                            correos_varios   TEXT
+                        );
+                    
+                        create table facturas
+                        (
+                            id            INTEGER
+                                primary key autoincrement,
+                            id_factura    TEXT,
+                            fecha         datetime,
+                            proveedor     TEXT,
+                            valor_total   REAL,
+                            correo        TEXT,
+                            texto_xml     TEXT,
                             ubicacion_pdf TEXT
                         );
-                    """)
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS configuracion (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            nombre_db TEXT,
-                            email_revision TEXT,
-                            token_contraseña TEXT,
-                            correos_varios TEXT
+                                   
+                        create table inventarioFacturas
+                        (
+                            id                 INTEGER
+                                primary key autoincrement,
+                            id_factura         TEXT,
+                            descripcion_item   TEXT,
+                            cantidad           INTEGER,
+                            valor_unitario     REAL,
+                            referencia         TEXT,
+                            inventariado       BOOLEAN default 0,
+                            id_inventarioUnico integer
                         );
-                    """)
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS inventarioFacturas (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            id_factura TEXT,
-                            descripcion_item TEXT,
-                            cantidad INTEGER,
-                            valor_unitario REAL,
-                            referencia TEXT,
-                            inventariado BOOLEAN DEFAULT 0
+                                   
+                        create table inventarioUnico
+                        (
+                            id                 INTEGER
+                                primary key autoincrement,
+                            codigoBarras       TEXT,
+                            descripcion        TEXT,
+                            cantidad           INTEGER,
+                            precioVenta        REAL,
+                            precioVentaCifrado TEXT,
+                            precioMaxDescuento REAL,
+                            grupo              TEXT
                         );
+
+                        create unique index idx_inventario_descripcion
+                            on inventarioUnico (descripcion);
+
+                        CREATE TRIGGER set_codigoBarras
+                        AFTER INSERT ON inventarioUnico
+                        FOR EACH ROW
+                        BEGIN
+                            UPDATE inventarioUnico
+                            SET codigoBarras = printf('%08d', NEW.id)
+                            WHERE id = NEW.id;
+                        END;
                     """)
+
                     conn.commit()
                     conn.close()
                     mensaje = f"Base de datos '{nombre_db}' creada correctamente."
