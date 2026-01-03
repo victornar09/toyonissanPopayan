@@ -72,7 +72,9 @@ def inventario_home():
 
             # Consulta de items únicos por descripcion_item (el más reciente)
             cursor.execute("""
-                SELECT id_factura,
+                SELECT 
+                    id,
+                    id_factura,
                     descripcion_item,
                     cantidad,
                     valor_unitario,
@@ -81,6 +83,7 @@ def inventario_home():
                     fecha
                 FROM (
                     SELECT
+                        a.id,
                         a.id_factura,
                         a.descripcion_item,
                         a.cantidad,
@@ -94,10 +97,14 @@ def inventario_home():
             """)
             items_unicos = cursor.fetchall()
 
+            print(items_unicos)
+
+            cursor.execute("update inventarioUnico set cantidad = 0")
+
             # Preparamos para recorrer items
             for item in items_unicos:
                 (
-                    id_factura, descripcion_item, cantidad,
+                    id, id_factura, descripcion_item, cantidad,
                     valor_unitario, referencia, inventariado, fecha
                 ) = item
 
@@ -105,66 +112,57 @@ def inventario_home():
                 cantidad_final = 0
                 precio_venta = int(round(valor_unitario, -3))  
 
+                precio_str = str(valor_unitario).replace(".", "").strip()
+                #precio_venta = int(precio_str) if precio_str.isdigit() else 0
+
                 # aplicar 10% descuento y redondear a miles
                 precio_descuento = precio_venta * 0.9
                 precio_descuento_redondeado = int(round(precio_descuento, -3))  
 
+                precio_cifrado = cifrar_precio(precio_venta)
+                precio_max_desc = round(precio_venta * 0.9, 0)
                 # cifrar precio
                 precio_cifrado = cifrar_precio(precio_venta)
 
-                # Verificar si ya existe en inventarioUnico
+                
+
                 cursor.execute("""
-                    SELECT codigoBarras 
-                    FROM inventarioUnico 
-                    WHERE descripcion = ?
-                """, (descripcion_item,))
-                existente = cursor.fetchone()
-
-
-                if existente:  
+                    INSERT INTO inventarioUnico (
+                    descripcion, cantidad,
+                    precioVenta, precioVentaCifrado, precioMaxDescuento, grupo
+                )
+                VALUES ( ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(descripcion) DO UPDATE SET
                     
-                    # ✅ Ya existe → actualizar (pero sin tocar el código de barras)
-                    cursor.execute("""
-                        UPDATE inventarioUnico
-                        SET descripcion = ?,
-                            cantidad = ?,
-                            precioVenta = ?,
-                            precioVentaCifrado = ?,
-                            precioMaxDescuento = ?,
-                            grupo = ?
-                        WHERE codigoBarras = ?
-                    """, (
-                        descripcion_item,
-                        cantidad_final,
-                        precio_venta,
-                        precio_cifrado,
-                        precio_descuento_redondeado,
-                        "",
-                        existente[0]
-                    ))
+                    cantidad = inventarioUnico.cantidad + excluded.cantidad,
+                    precioVenta = excluded.precioVenta,
+                    precioVentaCifrado = excluded.precioVentaCifrado,
+                    precioMaxDescuento = excluded.precioMaxDescuento,
+                    grupo = excluded.grupo;
+                """, (
+                    
+                    descripcion_item,
+                    cantidad,
+                    precio_venta,
+                    precio_cifrado,
+                    precio_max_desc, 
+                    ''
+                    ""
+                ))
 
-                else:
-                    # ❌ No existe → crear nuevo código de barras incremental
-                    cursor.execute("SELECT MAX(id) FROM inventarioUnico")
-                    max_id = cursor.fetchone()[0] or 0
-                    codigo_barras = str(max_id + 1).zfill(8)  # 8 dígitos
+                # Obtener el id del registro recién insertado/actualizado
+                nuevo_id = cursor.lastrowid
 
+                print(nuevo_id)
 
-                    # Insertar el nuevo item en inventarioUnico
-                    cursor.execute("""
-                        INSERT INTO inventarioUnico
-                        (codigoBarras, descripcion, cantidad, precioVenta, precioVentaCifrado, precioMaxDescuento, grupo)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        codigo_barras,
-                        descripcion_item,
-                        cantidad_final,
-                        precio_venta,
-                        precio_cifrado,
-                        precio_descuento_redondeado,
-                        ""
-                    ))
-
+                # Guardar ese id en inventarioFacturas
+                cursor.execute("""
+                    UPDATE inventarioFacturas
+                    SET inventariado = 1,
+                        id_inventarioUnico = ?
+                    WHERE id = ?
+                """, (nuevo_id, id))
+        
         conn.commit()
         conn.close()
 
@@ -206,6 +204,7 @@ def actualizar_item():
     try:
         data = request.get_json()
         item_id = data.get('id')
+        codigo = data.get('codigoBarras')
         descripcion = data.get('descripcion')
         cantidad = data.get('cantidad')
         precio = data.get('precio')
@@ -262,6 +261,8 @@ def imprimir_etiqueta_nueva():
     
     try:
         data = request.get_json()
+
+        print(data)
         codigo = data.get('codigo')
         descripcion = data.get('descripcion')
         precio = data.get('precio')

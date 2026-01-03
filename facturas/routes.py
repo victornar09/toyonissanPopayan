@@ -354,12 +354,6 @@ def ver_factura(id_factura):
             max_id = cursor.fetchone()[0] or 0
             codigo_barras = str(max_id + 1).zfill(8)  # 8 dígitos
 
-            print(codigo_barras,
-                descripcion,
-                cantidad,
-                precio_venta,
-                precio_cifrado,
-                precio_max_desc)
 
             cursor.execute("""
                 INSERT INTO inventarioUnico (
