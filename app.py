@@ -99,7 +99,9 @@ def configuracion():
                             token_contraseña TEXT,
                             correos_varios   TEXT
                         );
+                    """)
                     
+                    cursor.execute("""
                         create table facturas
                         (
                             id            INTEGER
@@ -112,20 +114,24 @@ def configuracion():
                             texto_xml     TEXT,
                             ubicacion_pdf TEXT
                         );
+                    """)
                                    
+                    cursor.execute("""
                         create table inventarioFacturas
                         (
                             id                 INTEGER
                                 primary key autoincrement,
-                            id_factura         TEXT,
-                            descripcion_item   TEXT,
+                            id_factura         TEXT ,
+                            descripcion_item   TEXT UNIQUE,
                             cantidad           INTEGER,
                             valor_unitario     REAL,
                             referencia         TEXT,
                             inventariado       BOOLEAN default 0,
                             id_inventarioUnico integer
                         );
-                                   
+                    """)
+
+                    cursor.execute("""               
                         create table inventarioUnico
                         (
                             id                 INTEGER
@@ -138,10 +144,13 @@ def configuracion():
                             precioMaxDescuento REAL,
                             grupo              TEXT
                         );
-
+                    """)
+                    cursor.execute("""
                         create unique index idx_inventario_descripcion
-                            on inventarioUnico (descripcion);
-
+                            on inventarioUnico (descripcion);}
+                    """)
+                                   
+                    cursor.execute("""
                         CREATE TRIGGER set_codigoBarras
                         AFTER INSERT ON inventarioUnico
                         FOR EACH ROW

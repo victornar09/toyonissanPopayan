@@ -48,7 +48,7 @@
                         {% set inventariado = item[3] == 1 %}   <!-- AQUÍ LA CORRECCIÓN -->
 
                         {% set valor_iva = valor_unitario * 1.19 %}
-                        {% set valor_publico_sugerido = (valor_unitario * 1.69) | round(-3) %}
+                        {% set valor_publico_sugerido = ((valor_unitario * 1.19) * 1.5) | round(-3) %}
                         
                     <tr class="{% if inventariado %}item-inventariado{% endif %}">
                         <td>
