@@ -5,6 +5,7 @@ from auth import auth
 from ion.routes import ion_bp
 from facturas.routes import facturas_bp
 from inventario.routes import inventario_bp
+from grupos.routes import grupo_bp
 import config
 import os
 import sqlite3
@@ -23,6 +24,7 @@ app.register_blueprint(auth)
 app.register_blueprint(ion_bp)
 app.register_blueprint(facturas_bp)
 app.register_blueprint(inventario_bp)
+app.register_blueprint(grupo_bp)
 
 # Ruta absoluta del directorio 'bin/codigos'
 RUTA_CODIGOS = os.path.join(os.path.dirname(__file__), 'bin', 'codigos')
