@@ -49,6 +49,66 @@
         <a href="{{ url_for('index') }}" class="btn btn-link mt-3">Volver al inicio</a>
     </div>
 
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-4">Plantillas BarTender</h2>
+
+        <form method="post" class="mb-4">
+            <input type="hidden" name="accion" value="guardar_template">
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" name="nombre_template" class="form-control" required>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Archivo (.btw)</label>
+                    <input type="text" name="archivo_template"
+                        class="form-control"
+                        placeholder="bartenderFiles/Documento1.btw"
+                        required>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label"># Columnas</label>
+                    <input type="number" name="numeroColumnas" class="form-control">
+                </div>
+
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                Registrar plantilla
+            </button>
+        </form>
+
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Ubicación</th>
+                    <th># Columnas</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in bartender_templates %}
+                <tr>
+                    <td>{{ t[1] }}</td>
+                    <td>{{ t[2] }}</td>
+                    <td><code>{{ t[3] }}</code></td>
+                    <td>
+                        {% if t[4] %}
+                            <span class="badge bg-success">Activo</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactivo</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     <!-- TERCERA PARTE: EJECUTAR SQL -->
     <div class="card card-body border-0 shadow mb-4">
         <h2 class="h5 mb-4">Ejecutar SQL Manualmente</h2>
@@ -74,6 +134,8 @@
             </div>
         {% endif %}
     </div>
+
+
 
 {% endblock content %}
 

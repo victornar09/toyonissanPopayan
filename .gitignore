@@ -12,6 +12,9 @@ bin/xml/*
 bdlocal/*
 !bdlocal/.gitkeep
 
+bartenderFiles/*
+!bartenderFiles/.gitkeep
+
 contextos.txt
 myenv/
 

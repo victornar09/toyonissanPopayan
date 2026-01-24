@@ -213,6 +213,42 @@ def configuracion():
                     conn.close()
             else:
                 sql_error = "No hay base de datos seleccionada o consulta vacía."
+        
+        elif accion == 'guardar_template':
+            nombre = request.form.get('nombre_template')
+            ubicacion = request.form.get('archivo_template')
+            numColumnas = request.form.get('numeroColumnas')
+
+            if ruta_db and nombre and ubicacion:
+                try:
+                    conn = sqlite3.connect(ruta_db)
+                    cursor = conn.cursor()
+                    cursor.execute("""          
+                        INSERT INTO bartenderFiles (name, ubicacion, numeroColumnas, activo)
+                        VALUES (?, ?, ?, ?);
+                    """, (nombre, ubicacion, numColumnas, True))
+                    conn.commit()
+                    conn.close()
+                    mensaje = "Template de BarTender registrado correctamente."
+                except Exception as e:
+                    mensaje = f"Error al registrar template: {e}"
+
+
+    bartender_templates = []
+
+    if ruta_db:
+        try:
+            conn = sqlite3.connect(ruta_db)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT *
+                FROM bartenderFiles
+                ORDER BY name
+            """)
+            bartender_templates = cursor.fetchall()
+            conn.close()
+        except:
+            bartender_templates = []
 
     return render_template(
         'configuracion.html',
@@ -222,7 +258,8 @@ def configuracion():
         token_contraseña=token_contraseña,
         correos_varios=correos_varios,
         sql_result=sql_result,
-        sql_error=sql_error
+        sql_error=sql_error,
+        bartender_templates=bartender_templates
     )
 
 

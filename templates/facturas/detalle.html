@@ -94,7 +94,44 @@
                 <span id="contadorSeleccion">Inventariar 0 ítems</span>
                 <button type="submit" class="btn btn-primary">Inventariar seleccionados</button>
             </div>
+
+            <input type="hidden" name="template_id" id="template_id">
+
         </form>
+
+        <!-- MODAL SELECCIÓN ETIQUETA -->
+        <div class="modal fade" id="modalEtiqueta" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Seleccionar etiqueta</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <label class="form-label">Etiqueta BarTender</label>
+                    <select id="selectEtiqueta" class="form-select" required>
+                    <option value="">-- Selecciona una etiqueta --</option>
+                    {% for t in bartender_templates %}
+                        <option value="{{ t[0] }}">{{ t[1] }}</option>
+                    {% endfor %}
+                    </select>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Cancelar
+                    </button>
+                    <button type="button" class="btn btn-primary" id="confirmarInventario">
+                    Inventariar
+                    </button>
+                </div>
+
+                </div>
+            </div>
+        </div>
+
     </div>
 
 {% else %}
@@ -198,13 +235,34 @@
         });
 
         document.getElementById("formInventario").addEventListener("submit", function (e) {
-            const cbs = getCheckboxes();
-            const seleccionados = cbs.filter(cb => cb.checked && !cb.disabled).length;
+            e.preventDefault(); // ⛔ NO enviar aún
 
-            if (seleccionados === 0) {
-                e.preventDefault();
+            const seleccionados = document.querySelectorAll(".itemCheckbox:checked:not(:disabled)");
+
+            if (seleccionados.length === 0) {
                 alert("Selecciona al menos un artículo para inventariar");
+                return;
             }
+
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById('modalEtiqueta'));
+            modal.show();
+        });
+
+        document.getElementById("confirmarInventario").addEventListener("click", function () {
+            const select = document.getElementById("selectEtiqueta");
+            const templateId = select.value;
+
+            if (!templateId) {
+                alert("Debes seleccionar una etiqueta");
+                return;
+            }
+
+            // Guardar template seleccionado
+            document.getElementById("template_id").value = templateId;
+
+            // Enviar ahora sí el formulario
+            document.getElementById("formInventario").submit();
         });
     });
 </script>
