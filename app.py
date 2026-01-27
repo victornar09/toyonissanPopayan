@@ -92,6 +92,20 @@ def configuracion():
                     cursor = conn.cursor()
                     cursor.execute("""
                                    
+                        create table main.bartenderFiles
+                        (
+                            idBartenderFiles INTEGER      not null
+                                constraint bartenderFiles_pk
+                                    primary key autoincrement,
+                            name             varchar(200) not null,
+                            ubicacion        varchar(250) not null,
+                            numeroColumnas   integer      not null,
+                            activo           BLOB
+                        );
+                    """)
+
+                    cursor.execute("""
+                                   
                         create table configuracion
                         (
                             id               INTEGER
@@ -117,6 +131,20 @@ def configuracion():
                             ubicacion_pdf TEXT
                         );
                     """)
+
+                    cursor.execute("""
+                                   
+                        create table main.grupoUnico
+                        (
+                            idGrupo     integer      not null
+                                constraint grupoUnico_pk
+                                    primary key autoincrement,
+                            grupo       varchar(100) not null,
+                            variante    varchar(200) not null,
+                            tipo        varchar(100),
+                            abreviacion varchar(20)  not null
+                        );
+                    """)
                                    
                     cursor.execute("""
                         create table inventarioFacturas
@@ -133,6 +161,8 @@ def configuracion():
                         );
                     """)
 
+
+
                     cursor.execute("""               
                         create table inventarioUnico
                         (
@@ -144,7 +174,8 @@ def configuracion():
                             precioVenta        REAL,
                             precioVentaCifrado TEXT,
                             precioMaxDescuento REAL,
-                            grupo              TEXT
+                            grupo              TEXT,
+                            idUbicacion        integer
                         );
                     """)
                     cursor.execute("""
