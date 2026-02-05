@@ -503,7 +503,6 @@ def ver_factura(id_factura):
     """, (id_factura,))
     items_factura = cursor.fetchall()
 
-    conn.close()
 
     return render_template(
         'facturas/detalle.html',

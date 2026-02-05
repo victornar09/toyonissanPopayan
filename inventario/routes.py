@@ -14,30 +14,46 @@ from reportlab.lib.styles import getSampleStyleSheet
 import win32com.client
 import csv
 
-def imprimir_varios(productos, columna_inicio=1):
-    # Mapeo chapineros para cifrar precio
-    mapa_chapineros = {
-        "1": "c", "2": "h", "3": "a", "4": "p",
-        "5": "i", "6": "n", "7": "e", "8": "r", "9": "o", "0": "s"
-    }
-
-    def cifrar_precio(precio):
-        precio_int = int(float(precio))  # Convertir float primero, luego int
-        return "".join(mapa_chapineros.get(d, d) for d in str(precio_int)).upper()
-
+def imprimir_varios(productos, ruta_template, columna_inicio=1):
+    # CSV temporal (BarTender lo lee)
     ruta_csv = os.path.abspath("productos_temp.csv")
+
     with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
         for codigo, descripcion, precio, cantidad in productos:
-            precio_cifrado = cifrar_precio(precio)
-            writer.writerow([codigo, descripcion, precio_cifrado, cantidad, columna_inicio])
+            writer.writerow([
+                codigo,
+                descripcion,
+                precio,
+                cantidad,
+                columna_inicio
+            ])
 
     bt = win32com.client.Dispatch("BarTender.Application")
     bt.Visible = True
 
-    formato = bt.Formats.Open(r"Documento1.btw", False, "")
+    # 👉 Abrir template dinámico
+    formato = bt.Formats.Open(
+        os.path.abspath(ruta_template),
+        False,
+        ""
+    )
+
     formato.PrintOut(False, False)
+
+    # Si luego quieres cerrar:
+    # formato.Close(0)
+    # bt.Quit(1)
+
+mapa_chapineros = {
+    "1": "c", "2": "h", "3": "a", "4": "p",
+    "5": "i", "6": "n", "7": "e", "8": "r", "9": "o", "0": "s"
+}
+
+def cifrar_precio(precio):
+    return "".join(mapa_chapineros.get(d, d) for d in str(int(precio))).upper()
+
 
 
 inventario_bp = Blueprint('inventario', __name__, url_prefix='/inventario')
@@ -55,14 +71,6 @@ def inventario_home():
 
         if db_files:
 
-            # Mapeo chapineros
-            mapa_chapineros = {
-                "1": "c", "2": "h", "3": "a", "4": "p",
-                "5": "i", "6": "n", "7": "e", "8": "r", "9": "o", "0": "s"
-            }
-
-            def cifrar_precio(precio):
-                return "".join(mapa_chapineros.get(d, d) for d in str(int(precio))).upper()
 
             ruta_db = os.path.join(carpeta_bd, db_files[-1])
             conn = sqlite3.connect(ruta_db)
@@ -188,12 +196,25 @@ def inventario_home():
         """)
         
         items_list = cursor.fetchall()
+
+        # ===============================
+        # Cargar templates BarTender
+        # ===============================
+        cursor.execute("""
+            SELECT idBartenderFiles, name
+            FROM bartenderFiles
+            WHERE activo = 1
+            ORDER BY name
+        """)
+        bartender_templates = cursor.fetchall()
+
         conn.close()
 
     return render_template(
         'inventario/inventario.html', 
         usuario=session.get('usuario'),
-        items=items_list)
+        items=items_list,
+        bartender_templates=bartender_templates)
 
 @inventario_bp.route('/actualizar_item', methods=['POST'])
 def actualizar_item():
@@ -219,15 +240,6 @@ def actualizar_item():
         ruta_db = os.path.join(carpeta_bd, db_files[-1])
         conn = sqlite3.connect(ruta_db)
         cursor = conn.cursor()
-
-        # Mapeo chapineros para cifrar precio
-        mapa_chapineros = {
-            "1": "c", "2": "h", "3": "a", "4": "p",
-            "5": "i", "6": "n", "7": "e", "8": "r", "9": "o", "0": "s"
-        }
-
-        def cifrar_precio(precio):
-            return "".join(mapa_chapineros.get(d, d) for d in str(int(precio))).upper()
 
         precio_cifrado = cifrar_precio(precio)
         precio_descuento = precio * 0.9
@@ -259,6 +271,17 @@ def imprimir_etiqueta_nueva():
     if 'usuario' not in session:
         return {'ok': False, 'error': 'No autenticado'}, 401
     
+
+    carpeta_bd = os.path.join(os.getcwd(), 'bdlocal')
+    db_files = [f for f in os.listdir(carpeta_bd) if f.endswith('.sqlite')]
+
+    if not db_files:
+        return "No hay base de datos creada", 404
+
+    ruta_db = os.path.join(carpeta_bd, db_files[-1])
+    conn = sqlite3.connect(ruta_db)
+    cursor = conn.cursor()
+    
     try:
         data = request.get_json()
 
@@ -268,12 +291,36 @@ def imprimir_etiqueta_nueva():
         precio = data.get('precio')
         cantidad = data.get('cantidad', 1)
         columna_inicio = data.get('columna_inicio', 1)
+        template_id = data.get('template_id', 'default')
+
+        precioCifrado = cifrar_precio(precio.replace(".", "").strip())
+
+        # -------------------------------
+        # Obtener plantilla BarTender
+        # -------------------------------
+        cursor.execute("""
+            SELECT ubicacion
+            FROM bartenderFiles
+            WHERE idBartenderFiles = ?
+        """, (template_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            conn.close()
+            raise Exception("Template BarTender no encontrado")
+
+        ruta_template = row[0]
+        conn.close()
 
         # Crear lista de productos a imprimir
-        productos = [(codigo, descripcion, precio, cantidad)]
+        productos = [(codigo, descripcion, precioCifrado, cantidad)]
         
         # Usar la función imprimir_varios existente
-        imprimir_varios(productos, columna_inicio)
+        imprimir_varios(
+            productos,
+            ruta_template=ruta_template,
+            columna_inicio=1
+        )
 
         return {'ok': True, 'mensaje': f'{cantidad} etiqueta(s) enviada(s) a impresión'}
     except Exception as e:

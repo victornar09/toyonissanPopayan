@@ -127,6 +127,16 @@
                         <option value="2">Columna 2</option>
                     </select>
                 </div>
+
+                <div id="seccionEtiqueta" style="display: none;" class="border-top pt-3 mt-3">
+                    <label class="form-label">Etiqueta BarTender</label>
+                    <select id="selectEtiqueta" class="form-select" required>
+                    <option value="">-- Selecciona una etiqueta --</option>
+                    {% for t in bartender_templates %}
+                        <option value="{{ t[0] }}">{{ t[1] }}</option>
+                    {% endfor %}
+                    </select>
+                </div>
           </div>
 
           
@@ -171,6 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('seccionImpresion').style.display = 'none';
         document.getElementById('seccionCantidadImprimir').style.display = 'none';
         document.getElementById('seccionColumna').style.display = 'none';
+        document.getElementById('seccionEtiqueta').style.display = 'none';
         document.getElementById('cantidadImprimir').value = 1;
         document.getElementById('columnaInicio').value = '1';
         document.getElementById('btnImprimirModal').textContent = 'Imprimir';
@@ -235,6 +246,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('seccionImpresion').style.display = 'block';
             document.getElementById('seccionCantidadImprimir').style.display = 'block';
             document.getElementById('seccionColumna').style.display = 'block';
+            document.getElementById('seccionEtiqueta').style.display = 'block';
             document.getElementById('cantidadImprimir').focus();
             document.getElementById('btnImprimirModal').textContent = 'Ejecutar Impresión';
             estadoImpresion[id] = 'listo';
@@ -244,6 +256,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const descripcion = document.getElementById('descripcionEdit').value;
             const precio = document.getElementById('precioEdit').value;
             const cantidad = parseInt(document.getElementById('cantidadImprimir').value);
+            const etiquetaSeleccionada = document.getElementById('selectEtiqueta').value;
 
             if (!cantidad || cantidad < 1) {
                 alert('Ingresa una cantidad válida');
@@ -260,7 +273,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         descripcion: descripcion,
                         precio: precio,
                         cantidad: cantidad,
-                        columna_inicio: columnaInicio
+                        columna_inicio: columnaInicio,
+                        template_id: etiquetaSeleccionada
                     })
                 });
 

@@ -12,6 +12,7 @@
     <!-- SEGUNDA PARTE ADAPTADA -->
     <div class="card card-body border-0 shadow mb-4">
         <h2 class="h5 mb-4">Configuración avanzada</h2>
+
         <form action="" method="post" class="mb-4">
             <input type="hidden" name="accion" value="crear_bd">
             <div class="row">
@@ -37,15 +38,94 @@
                     <input type="password" id="token_contraseña" name="token_contraseña" class="form-control" required value="{{ token_contraseña }}">
                 </div>
             </div>
-            <div class="mb-3">
-                <label for="correos_varios" class="form-label">Listado de Varios Correos</label>
-                <textarea id="correos_varios" name="correos_varios" rows="4" class="form-control" placeholder="Un correo por línea">{{ correos_varios }}</textarea>
-            </div>
+
             <button type="submit" class="btn btn-gray-800 mt-2 animate-up-2">Guardar Configuración</button>
+
+            {% if mensaje %}
+                <div class="alert alert-info mt-3">{{ mensaje }}</div>
+            {% endif %}
+            
         </form>
-        {% if mensaje %}
-            <div class="alert alert-info mt-3">{{ mensaje }}</div>
-        {% endif %}
+
+    </div>
+
+    <div class="card card-body border-0 shadow mb-4">
+
+        <h2 class="h5 mb-4">Configuración Proveedor</h2>
+
+        <form method="post" class="mb-4">
+            <input type="hidden" name="accion" value="guardar_proveedor">
+
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Proveedor</label>
+                    <input type="text" name="nombre_proveedor" class="form-control" required>
+                </div>
+
+                <div class="col-md-1 mb-3">
+                    <label class="form-label">Siglas</label>
+                    <input type="text" name="sigla" class="form-control" required>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Correo de Facturas</label>
+                    <input type="email" name="correo_facturas" class="form-control" required>
+                </div>
+
+                <div class="col-md-1 mb-3">
+                    <label class="form-label">Prefijo</label>
+                    <input type="text" name="prefijo" class="form-control" required>
+                </div>
+
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Ciudad</label>
+                    <input type="text" name="ciudad" class="form-control">
+                </div>
+
+                <div class="col-md- mb-3">
+                    <label class="form-label">Teléfono</label>
+                    <input type="text" name="telefono" class="form-control">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                Registrar Proveedor
+            </button>
+
+            {% if mensaje %}
+                <div class="alert alert-info mt-3">{{ mensaje }}</div>
+            {% endif %}
+
+        </form>
+
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Proveedor</th>
+                    <th>Sigla</th>
+                    <th>Correo Faturas</th>
+                    <th>Prefijo</th>   
+                    <th>Ciudad</th>
+                    <th>Telefono</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in proveedores %}
+                <tr>
+                    <td>{{ t[0] }}</td>
+                    <td>{{ t[1] }}</td>
+                    <td>{{ t[2] }}</td>
+                    <td>{{ t[3] }}</td>
+                    <td>{{ t[4] }}</td>
+                    <td>{{ t[5] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+
+
+
         <a href="{{ url_for('index') }}" class="btn btn-link mt-3">Volver al inicio</a>
     </div>
 
@@ -79,6 +159,10 @@
             <button type="submit" class="btn btn-primary">
                 Registrar plantilla
             </button>
+
+            {% if mensaje %}
+                <div class="alert alert-info mt-3">{{ mensaje }}</div>
+            {% endif %}
         </form>
 
         <table class="table table-sm table-striped">
@@ -107,6 +191,97 @@
                 {% endfor %}
             </tbody>
         </table>
+
+        
+        <a href="{{ url_for('index') }}" class="btn btn-link mt-3">Volver al inicio</a>
+    </div>
+
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-4">Configuración Ubicación Estantes</h2>
+
+        <form method="post" class="mb-4">
+            <input type="hidden" name="accion" value="guardar_ubicacion">
+
+            <div class="row">
+                
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Piso</label>
+                    <select id="piso" name="piso" class="form-control">  
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Pasillo</label>
+                    <select id="pasillo" name="pasillo" class="form-control">  
+                        <option value="">Seleccione un pasillo</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Tipo</label>
+                    <select id="tipo" name="tipo" class="form-control">  
+                        <option value="E">Estante</option>
+                        <option value="V">Vitrina</option>
+                        <option value="C">Caja</option>
+                    </select>
+                </div>
+
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Número</label>
+                    <input type="number" name="numero" class="form-control" min="1" max="6">
+                </div>
+
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                Registrar Ubicación
+            </button>
+
+            {% if mensaje %}
+                <div class="alert alert-info mt-3">{{ mensaje }}</div>
+            {% endif %}
+        </form>
+
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Descripción</th>
+                    <th>piso</th>
+                    <th>pasillo</th>
+                    <th>tipo</th>   
+                    <th>número</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in ubicaciones %}
+                <tr>
+                    <td>{{ t[1] }}</td>
+                    <td>{{ t[2] }}</td>
+                    <td>{{ t[3] }}</td>
+                    <td>
+                        {% if t[5] == "E" %}
+                            Estante
+                        {% elif t[5] == "V" %}
+                            Vitrina
+                        {% elif t[5] == "C" %}
+                            Cajas
+                        {% else %}
+                            {{ t[5] }}
+                        {% endif %}
+                    </td>
+                    <td>{{ t[4] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        
+
+        
+        <a href="{{ url_for('index') }}" class="btn btn-link mt-3">Volver al inicio</a>
     </div>
 
     <!-- TERCERA PARTE: EJECUTAR SQL -->
@@ -135,6 +310,30 @@
         {% endif %}
     </div>
 
+<script>
+    const pisoInput = document.getElementById("piso");
+    const accionSelect = document.getElementById("pasillo");
+
+    // Definimos las acciones por piso
+    const accionesPorPiso = {
+        1: ["1", "2", "3", "Gradas", "Atras", "Frente"],
+        2: ["1", "2", "3", "pequeño"]
+    };
+
+    pisoInput.addEventListener("input", function() {
+        const piso = this.value;
+        accionSelect.innerHTML = ""; // limpiar opciones
+
+        if (accionesPorPiso[piso]) {
+            accionesPorPiso[piso].forEach(accion => {
+                const option = document.createElement("option");
+                option.value = accion.toLowerCase().replace(/\s+/g, "_");
+                option.textContent = accion;
+                accionSelect.appendChild(option);
+            });
+        }
+    });
+</script>
 
 
 {% endblock content %}

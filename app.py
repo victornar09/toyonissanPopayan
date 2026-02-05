@@ -194,6 +194,54 @@ def configuracion():
                         END;
                     """)
 
+                    cursor.execute("""
+                        create table main.proveedor
+                        (
+                            idProveedor    integer      not null
+                                constraint proveedor_pk
+                                    primary key autoincrement,
+                            proveedor      varchar(500) not null,
+                            siglas         varchar(100) not null,
+                            correoFacturas varchar(500) not null,
+                            prefijo        varchar(20)  not null,
+                            ciudad         varchar(100),
+                            telefono       integer
+                        );
+                    """)
+
+                    cursor.execute("""
+                        create table Ubicacion
+                        (
+                            idUbicacion     integer           not null
+                                constraint Ubicacion_pk
+                                    primary key autoincrement,
+                            descripcion     varchar(100)
+                                constraint Ubicacion_pk_2
+                                    unique,
+                            piso            integer default 1 not null,
+                            pasillo         integer default null,
+                            numero          integer,
+                            tipo            varchar(100),
+                            codigoUbicacion varchar(10)       not null
+                        );
+
+                    """)
+
+                    cursor.execute("""
+                        CREATE TRIGGER trg_ubicacion_descripcion
+                        AFTER INSERT ON Ubicacion
+                        BEGIN
+                            UPDATE Ubicacion
+                            SET descripcion =
+                                CASE
+                                    WHEN tipo = 'E' THEN 'P-' || piso || ' Pllo-' || pasillo || ' E-' || numero
+                                    WHEN tipo = 'V' THEN 'P-' || piso || ' Pllo-' || pasillo || ' V-' || numero
+                                    WHEN tipo = 'C' THEN 'P-' || piso || ' Pllo-' || pasillo || ' Caja-' || numero
+                                END
+                            WHERE rowid = NEW.rowid;
+                        END;
+                    """)
+
                     conn.commit()
                     conn.close()
                     mensaje = f"Base de datos '{nombre_db}' creada correctamente."
@@ -263,6 +311,49 @@ def configuracion():
                     mensaje = "Template de BarTender registrado correctamente."
                 except Exception as e:
                     mensaje = f"Error al registrar template: {e}"
+        
+        elif accion == 'guardar_ubicacion':
+            
+            piso = request.form.get('piso')
+            pasillo = request.form.get('pasillo')
+            tipo = request.form.get('tipo')
+            numero = request.form.get('numero')
+
+            if ruta_db and piso and tipo and numero:
+                try:
+                    conn = sqlite3.connect(ruta_db)
+                    cursor = conn.cursor()
+                    cursor.execute("""          
+                        INSERT INTO Ubicacion (piso, pasillo, tipo, numero)
+                        VALUES (?, ?, ?, ?);
+                    """, (piso, pasillo, tipo, numero))
+                    conn.commit()
+                    conn.close()
+                    mensaje = "Ubicación registrada correctamente."
+                except Exception as e:
+                    mensaje = f"Error al registrar ubicación: {e}"
+
+        elif accion == 'guardar_proveedor':
+            nombre_proveedor = request.form.get('nombre_proveedor')
+            sigla = request.form.get('sigla')
+            correo_facturas = request.form.get('correo_facturas')
+            prefijo = request.form.get('prefijo')
+            ciudad = request.form.get('ciudad')
+            telefono = request.form.get('telefono')
+
+            if ruta_db and nombre_proveedor and sigla and correo_facturas and prefijo:
+                try:
+                    conn = sqlite3.connect(ruta_db)
+                    cursor = conn.cursor()
+                    cursor.execute("""          
+                        INSERT INTO proveedor (proveedor, siglas, correoFacturas, prefijo, ciudad, telefono)
+                        VALUES (?, ?, ?, ?, ?, ?);
+                    """, (nombre_proveedor, sigla, correo_facturas, prefijo, ciudad, telefono))
+                    conn.commit()
+                    conn.close()
+                    mensaje = "Proveedor registrado correctamente."
+                except Exception as e:
+                    mensaje = f"Error al registrar proveedor: {e}"
 
 
     bartender_templates = []
@@ -280,6 +371,36 @@ def configuracion():
             conn.close()
         except:
             bartender_templates = []
+    
+    ubicaciones = []
+
+    if ruta_db:
+        try:
+            conn = sqlite3.connect(ruta_db)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT *
+                FROM Ubicacion
+                ORDER BY descripcion
+            """)
+            ubicaciones = cursor.fetchall()
+            conn.close()
+        except:
+            ubicaciones = []
+    
+    proveedores = []
+
+    if ruta_db:
+        try:
+            conn = sqlite3.connect(ruta_db)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT proveedor, siglas, correoFacturas, prefijo, ciudad, telefono FROM proveedor
+            """)
+            proveedores = cursor.fetchall()
+            conn.close()
+        except:
+            proveedores = []
 
     return render_template(
         'configuracion.html',
@@ -290,7 +411,9 @@ def configuracion():
         correos_varios=correos_varios,
         sql_result=sql_result,
         sql_error=sql_error,
-        bartender_templates=bartender_templates
+        bartender_templates=bartender_templates,
+        ubicaciones=ubicaciones,
+        proveedores=proveedores
     )
 
 
