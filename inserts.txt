@@ -1,0 +1,16 @@
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (1, 'NIPONAUTOS S.A.S', 'NIPN', 'siesafe@siesa.com', 'FN', 'CALI', '');
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (3, 'BOLIVARIANA DE CAMPEROS SAS', 'BOLCMP', 'software@mg.oficinapro.co', 'EST', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (4, 'TYM REPRESENTACIONES S.A.S', 'TYR', 'facturacionelectronica@tymautopartes.com.co', 'EMY', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (5, 'IMPORTADORA USA', 'IMPUSA', 'facturacionelectronica@impo-usa.com', 'FS', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (6, 'JAPONESA DE REPUESTOS LTDA', 'JPR', 'no-responder@facture.co', 'FEJ', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (7, 'MOTORES JAPONESES SAS', 'MTRJP', 'siesafe@siesa.com', '2FE', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (8, 'JOTA REPUESTOS S.A.', 'JTAR', 'no-responder@facture.co', 'FE', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (9, 'UDOSHIA PARTS SAS', 'UDOP', 'no-responder@worldoffice.com.co', 'UD', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (10, 'IMPORTADORA INP AUTOPARTES', 'IMPAUT', 'notificaciones@thefactoryhka.com.co', 'FMA', null, null);
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (11, 'REPUESTOS CALI SAS', 'REPCALI', 'notificaciones@thefactoryhka.com.co', 'FY', 'CALI', null);
+
+INSERT INTO configuracion (id, nombre_db, email_revision, token_contraseña, correos_varios) VALUES (1, 'toyonissan', 'jhonnarvaeztorres@gmail.com', 'gyse hxeh qgzy ujcm', 'siesafe@siesa.com,facturaelectronicaeyr@gmail.com,notificaciones@thefactoryhka.com.co,notificaciones@contapyme.com,facturacion@siigo.com,software@mg.oficinapro.co,software@mg.oficinapro.co,facturacionelectronica@impo-usa.com,motorjaponsas@gmail.com,facturacionelectronica@tymautopartes.com.co,no-responder@facture.co,cnpzonafranca@hotmail.com,no-responder@worldoffice.com.co');
+
+INSERT INTO bartenderFiles (idBartenderFiles, name, ubicacion, numeroColumnas, activo) VALUES (1, '40x50', 'bartenderFiles/Documento1.btw', 2, 1);
+INSERT INTO bartenderFiles (idBartenderFiles, name, ubicacion, numeroColumnas, activo) VALUES (2, '30x40', 'bartenderFiles/Documento2.btw', 1, 1);
+

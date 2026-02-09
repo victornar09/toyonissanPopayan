@@ -11,66 +11,6 @@ import win32com.client
 
 
 
-# def imprimir_varios(productos, columna_inicio=1):
-#     # """
-#     # productos: array de tuplas con estructura:
-#     #     (codigo, descripcion, precio, cantidad)
-#     # columna_inicio: número de columna inicial
-#     # """
-
-#     # # 1) Crear CSV temporal con todos los productos
-#     # ruta_csv = "productos_temp.csv"
-#     # with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
-#     #     writer = csv.writer(f)
-#     #     writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
-#     #     for codigo, descripcion, precio, cantidad in productos:
-#     #         writer.writerow([
-#     #             codigo,
-#     #             descripcion,
-#     #             precio,
-#     #             cantidad,
-#     #             columna_inicio
-#     #         ])
-
-#     # # 2) Abrir BarTender
-#     # bt = win32com.client.Dispatch("BarTender.Application")
-#     # bt.Visible = True
-
-#     # # 3) Abrir plantilla
-#     # formato = bt.Formats.Open(r"Documento1.btw", False, "")
-
-#     # # 4) Conectar el CSV como base de datos
-#     # formato.DatabaseConnections.SetFileName('Conexión 1', ruta_csv)
-
-#     # # 5) Imprimir todos los registros del array
-#     # formato.PrintOut(False, False)
-
-#     # # 6) Cerrar plantilla y BarTender
-#     # formato.Close(0)
-#     # bt.Quit(1)
-    
-
-
-
-
-# def imprimir_varios(productos, columna_inicio=1):
-#     ruta_csv = os.path.abspath("productos_temp.csv")
-#     with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
-#         writer = csv.writer(f)
-#         writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
-#         for codigo, descripcion, precio, cantidad in productos:
-#             writer.writerow([codigo, descripcion, precio, cantidad, columna_inicio])
-
-
-#     bt = win32com.client.Dispatch("BarTender.Application")
-#     bt.Visible = True
-
-#     formato = bt.Formats.Open(r"Documento1.btw", False, "")
-#     formato.PrintOut(False, False)
-
-#     #formato.Close(0)
-#     #bt.Quit(1)
-
 def imprimir_varios(productos, ruta_template, columna_inicio=1):
     # CSV temporal (BarTender lo lee)
     ruta_csv = os.path.abspath("productos_temp.csv")
@@ -569,5 +509,22 @@ def obtener_password_configurado():
     return password
 
 def obtener_dominios_configurados():
-    _, _, correos = obtener_ultima_configuracion()
-    return [correo.strip() for correo in correos.split(',') if correo.strip()]
+    carpeta_bd = os.path.join(os.getcwd(), 'bdlocal')
+    db_files = [f for f in os.listdir(carpeta_bd) if f.endswith('.sqlite')]
+    if not db_files:
+        return ''
+    ruta_db = os.path.join(carpeta_bd, db_files[-1])
+    try:
+        conn = sqlite3.connect(ruta_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT correoFacturas FROM proveedor")
+        correos = cursor.fetchall()
+        # cambialo a una lista
+        correos_lista = [c[0] for c in correos if c[0]]
+        print(f"Dominios configurados: {correos_lista}")
+        conn.close()
+        return correos_lista
+    except Exception:
+        pass
+    return ''
+
