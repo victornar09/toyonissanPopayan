@@ -88,6 +88,7 @@ def inventario_home():
                     valor_unitario,
                     referencia,
                     inventariado,
+                    proveedor,
                     fecha
                 FROM (
                     SELECT
@@ -98,6 +99,7 @@ def inventario_home():
                         a.valor_unitario,
                         a.referencia,
                         a.inventariado,
+                        b.proveedor,
                         b.fecha
                     FROM inventarioFacturas a
                     LEFT JOIN facturas b ON a.id_factura = b.id_factura
@@ -113,7 +115,7 @@ def inventario_home():
             for item in items_unicos:
                 (
                     id, id_factura, descripcion_item, cantidad,
-                    valor_unitario, referencia, inventariado, fecha
+                    valor_unitario, referencia, inventariado, proveedor, fecha
                 ) = item
 
                 # Calcular valores requeridos
@@ -136,24 +138,29 @@ def inventario_home():
 
                 cursor.execute("""
                     INSERT INTO inventarioUnico (
-                    descripcion, cantidad,
-                    precioVenta, precioVentaCifrado, precioMaxDescuento, grupo
+                    descripcion, referencia, cantidad,
+                    precioVenta, precioVentaCifrado, precioMaxDescuento, proveedor, fechaActualizacion, grupo
                 )
-                VALUES ( ?, ?, ?, ?, ?, ?)
+                VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(descripcion) DO UPDATE SET
-                    
+                    referencia = excluded.referencia,
                     cantidad = inventarioUnico.cantidad + excluded.cantidad,
                     precioVenta = excluded.precioVenta,
                     precioVentaCifrado = excluded.precioVentaCifrado,
                     precioMaxDescuento = excluded.precioMaxDescuento,
+                    proveedor = excluded.proveedor,
+                    fechaActualizacion = excluded.fechaActualizacion
                     grupo = excluded.grupo;
                 """, (
                     
                     descripcion_item,
+                    referencia,
                     cantidad,
                     precio_venta,
                     precio_cifrado,
-                    precio_max_desc, 
+                    precio_max_desc,
+                    proveedor,
+                    fecha,
                     ''
                     ""
                 ))
@@ -186,11 +193,14 @@ def inventario_home():
             SELECT
                 id, 
                 codigoBarras,
+                referencia,
                 descripcion,
                 cantidad,
                 precioVenta,
                 precioVentaCifrado, 
                 precioMaxDescuento,
+                proveedor,
+                fechaActualizacion,
                 grupo
             FROM inventarioUnico;
         """)

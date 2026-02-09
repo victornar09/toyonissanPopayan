@@ -17,13 +17,14 @@ def imprimir_varios(productos, ruta_template, columna_inicio=1):
 
     with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
-        for codigo, descripcion, precio, cantidad in productos:
+        writer.writerow(["codigo", "descripcion", "precio", "copias","proveedor", "inicio_columna"])
+        for codigo, descripcion, precio, cantidad,proveedor in productos:
             writer.writerow([
                 codigo,
                 descripcion,
                 precio,
                 cantidad,
+                proveedor,
                 columna_inicio
             ])
 
@@ -317,9 +318,10 @@ def ver_factura(id_factura):
         # Items de la factura
         # -------------------------------
         cursor.execute("""
-            SELECT id, descripcion_item, cantidad, valor_unitario, inventariado
-            FROM inventarioFacturas
-            WHERE id_factura = ?
+            SELECT a.id, a.referencia, a.descripcion_item, a.cantidad, a.valor_unitario, a.inventariado, b.proveedor, b.fecha
+            FROM inventarioFacturas a
+            JOIN facturas b 
+            WHERE a.id_factura = ?
         """, (id_factura,))
         items_bd = cursor.fetchall()
 
@@ -330,7 +332,7 @@ def ver_factura(id_factura):
         # -------------------------------
         for idx in seleccionados:
             idx = int(idx) - 1  # Jinja empieza en 1
-            id_fact_item, descripcion, cantidad, valor_unitario, inventariado = items_bd[idx]
+            id_fact_item, referencia, descripcion, cantidad, valor_unitario, inventariado, proveedor, fecha = items_bd[idx]
 
             precio_str = str(valores_publicos[idx]).replace(".", "").strip()
             precio_venta = int(precio_str) if precio_str.isdigit() else 0
@@ -339,26 +341,33 @@ def ver_factura(id_factura):
             precio_max_desc = round(precio_venta * 0.9, 0)
 
             cursor.execute("""
-                INSERT INTO inventarioUnico (
-                    descripcion, cantidad,
-                    precioVenta, precioVentaCifrado,
-                    precioMaxDescuento, grupo
+                    INSERT INTO inventarioUnico (
+                    descripcion, referencia, cantidad,
+                    precioVenta, precioVentaCifrado, precioMaxDescuento, proveedor, fechaActualizacion, grupo
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(descripcion) DO UPDATE SET
+                    referencia = excluded.referencia,
                     cantidad = inventarioUnico.cantidad + excluded.cantidad,
                     precioVenta = excluded.precioVenta,
                     precioVentaCifrado = excluded.precioVentaCifrado,
                     precioMaxDescuento = excluded.precioMaxDescuento,
+                    proveedor = excluded.proveedor,
+                    fechaActualizacion = excluded.fechaActualizacion,
                     grupo = excluded.grupo;
-            """, (
-                descripcion,
-                cantidad,
-                precio_venta,
-                precio_cifrado,
-                precio_max_desc,
-                ''
-            ))
+                """, (
+                    
+                    descripcion,
+                    referencia,
+                    cantidad,
+                    precio_venta,
+                    precio_cifrado,
+                    precio_max_desc,
+                    proveedor,
+                    fecha,
+                    ''
+                    ""
+                ))
 
             # Obtener ID real del inventario
             cursor.execute("""
@@ -389,9 +398,11 @@ def ver_factura(id_factura):
                 iU.codigoBarras,
                 iU.descripcion,
                 iU.precioVentaCifrado,
-                iF.cantidad
+                iF.cantidad, 
+                PR.siglas
             FROM inventarioFacturas iF
             JOIN inventarioUnico iU ON iF.id_inventarioUnico = iU.id
+            JOIN proveedor PR ON PR.proveedor = iU.proveedor
             WHERE iF.id_factura = ?
               AND iU.id IN ({placeholders})
         """

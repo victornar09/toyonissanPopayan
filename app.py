@@ -169,18 +169,22 @@ def configuracion():
                             id                 INTEGER
                                 primary key autoincrement,
                             codigoBarras       TEXT,
+                            referencia         VARCHAR(100),
                             descripcion        TEXT,
                             cantidad           INTEGER,
                             precioVenta        REAL,
                             precioVentaCifrado TEXT,
                             precioMaxDescuento REAL,
                             grupo              TEXT,
-                            idUbicacion        integer
+                            proveedor          VARCHAR(200) NOT NULL,
+                            fechaActualizacion DATE NOT NULL, 
+                            idUbicacion        INTEGER
+                            
                         );
                     """)
                     cursor.execute("""
                         create unique index idx_inventario_descripcion
-                            on inventarioUnico (descripcion);}
+                            on inventarioUnico (descripcion);
                     """)
                                    
                     cursor.execute("""
@@ -276,22 +280,31 @@ def configuracion():
         elif accion == 'ejecutar_sql':
             sql_query = request.form.get('sql_query')
             if ruta_db and sql_query:
+                # 1. Separar por punto y coma y quitar espacios vacíos
+                sql_list = [q.strip() for q in sql_query.split(";") if q.strip()]
+                sql_results = [] # Lista para guardar todos los resultados
+
                 try:
                     conn = sqlite3.connect(ruta_db)
                     cursor = conn.cursor()
-                    cursor.execute(sql_query)
-                    conn.commit()
 
-                    if sql_query.strip().lower().startswith("select"):
-                        sql_result = cursor.fetchall()
-                    else:
-                        sql_result = "Consulta ejecutada correctamente."
+                    for query in sql_list:
+                        cursor.execute(query)
+                        
+                        # 2. Manejar resultados de cada consulta individual
+                        if query.lower().startswith("select"):
+                            sql_results.append(cursor.fetchall())
+                        else:
+                            conn.commit() # Commit solo si hay cambios (INSERT/UPDATE/DELETE)
+                            sql_results.append(f"Ejecutada: {query[:20]}...")
+
+                    sql_result = sql_results # Devolver la lista completa
                 except Exception as e:
-                    sql_error = str(e)
+                    sql_error = f"Error en SQL: {str(e)}"
                 finally:
                     conn.close()
             else:
-                sql_error = "No hay base de datos seleccionada o consulta vacía."
+                sql_error = "Falta la base de datos o la consulta."
         
         elif accion == 'guardar_template':
             nombre = request.form.get('nombre_template')

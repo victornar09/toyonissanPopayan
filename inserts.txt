@@ -1,4 +1,4 @@
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (1, 'NIPONAUTOS S.A.S', 'NIPN', 'siesafe@siesa.com', 'FN', 'CALI', '');
+INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (1, 'NIPONAUTOS SAS', 'NIPN', 'siesafe@siesa.com', 'FN', 'CALI', '');
 INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (3, 'BOLIVARIANA DE CAMPEROS SAS', 'BOLCMP', 'software@mg.oficinapro.co', 'EST', null, null);
 INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (4, 'TYM REPRESENTACIONES S.A.S', 'TYR', 'facturacionelectronica@tymautopartes.com.co', 'EMY', null, null);
 INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (5, 'IMPORTADORA USA', 'IMPUSA', 'facturacionelectronica@impo-usa.com', 'FS', null, null);

@@ -33,21 +33,27 @@
   <table class="table table-hover">
       <thead>
           <tr>
+              <th class="border-gray-200">ID</th>
               <th class="border-gray-200">Referencia</th>
               <th class="border-gray-200">Descripcion</th>						
               <th class="border-gray-200">Cantidad</th>
               <th class="border-gray-200">Precio</th>
+              <th class="border-gray-200">Proveedor</th>
+              <th class="border-gray-200">Fecha Actu</th>
               <th class="border-gray-200">Grupo</th>
-              <th class="border-gray-200">Código Barras</th>
+              <th class="border-gray-200">imprimir</th>
           </tr>
       </thead>
       <tbody id="tablaInventario">
-          {% for id, codigoBarras, descripcion, cantidad, precioVenta, precioVentaCifrado, precioMaxDescuento, grupo in items %}
+          {% for id, codigoBarras, referencia, descripcion, cantidad, precioVenta, precioVentaCifrado, precioMaxDescuento, proveedor, fechaActualizacion, grupo in items %}
           <tr>
-              <td><span class="fw-bold">{{ codigoBarras }}</span></td>
+              <td><span class="fw-bold">{{ id }}</span></td>
+              <td><span class="fw-bold">{{ Referencia }}</span></td>
               <td><span class="fw-normal">{{ descripcion }}</span></td>
-              <td><span class="fw-normal">{{ cantidad }}</span></td>   
+              <td><span class="fw-normal">{{ cantidad }}</span></td>
               <td><span class="fw-bold">$ {{ precioVenta }}</span></td>
+              <td><span class="fw-normal">{{ proveedor }}</span></td>   
+              <td><span class="fw-normal">{{ fechaActualizacion }}</span></td>   
               <td><span class="fw-normal">{{ grupo }}</span></td> 
               <td>
                     <button type="button" class="btn btn-primary btn-editar"
