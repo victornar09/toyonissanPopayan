@@ -149,7 +149,7 @@ def inventario_home():
                     precioVentaCifrado = excluded.precioVentaCifrado,
                     precioMaxDescuento = excluded.precioMaxDescuento,
                     proveedor = excluded.proveedor,
-                    fechaActualizacion = excluded.fechaActualizacion
+                    fechaActualizacion = excluded.fechaActualizacion,
                     grupo = excluded.grupo;
                 """, (
                     
@@ -161,8 +161,7 @@ def inventario_home():
                     precio_max_desc,
                     proveedor,
                     fecha,
-                    ''
-                    ""
+                    None
                 ))
 
                 # Obtener el id del registro recién insertado/actualizado
