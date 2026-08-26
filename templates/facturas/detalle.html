@@ -32,6 +32,7 @@
                 <thead>
                     <tr>
                         <th class="border-gray-200"><input type="checkbox" id="selectAll"></th>
+                        <th class="border-gray-200">Referencia</th>
                         <th class="border-gray-200">Descripción</th>
                         <th class="border-gray-200">Valor Público (Ajustable)</th>
                         <th class="border-gray-200">Cantidad Ingresada</th>						
@@ -42,15 +43,18 @@
 
                 <tbody id="tablaFacturas">           
                     {% for item in items_factura %}
-                        {% set descripcion = item[0] %}
-                        {% set cantidad = item[1] %}
-                        {% set valor_unitario = item[2] %}
-                        {% set inventariado = item[3] == 1 %}   <!-- AQUÍ LA CORRECCIÓN -->
+
+                        {% set referencia = item[0] %}
+                        {% set descripcion = item[1] %}
+                        {% set cantidad = item[2] %}
+                        {% set valor_unitario = item[3] %}
+                        {% set inventariado = item[4] == 1 %}   <!-- AQUÍ LA CORRECCIÓN -->
 
                         {% set valor_iva = valor_unitario * 1.19 %}
                         {% set valor_publico_sugerido = ((valor_unitario * 1.19) * 1.5) | round(-3) %}
                         
                     <tr class="{% if inventariado %}item-inventariado{% endif %}">
+                        
                         <td>
                             <input 
                                 type="checkbox" 
@@ -61,15 +65,23 @@
                             >
                         </td>
 
-                            
-                            <td>
-                                <input 
-                                    type="text" 
-                                    name="descripcion" 
-                                    class="form-control" 
-                                    value="{{ descripcion }}" 
-                                    {% if inventariado %}readonly{% endif %}>
-                            </td>
+                        <td>
+                            <input 
+                                type="text" 
+                                name="referencia" 
+                                class="form-control" 
+                                value="{{ referencia }}" 
+                                {% if inventariado %}readonly{% endif %}>
+                        </td>
+   
+                        <td>
+                            <input 
+                                type="text" 
+                                name="descripcion" 
+                                class="form-control" 
+                                value="{{ descripcion }}" 
+                                {% if inventariado %}readonly{% endif %}>
+                        </td>
 
                         <td>
                             <input 

@@ -6,7 +6,7 @@
 <!-- PRIMERA PARTE -->
     <div class="card card-body border-0 shadow mb-4">
         <h2 class="h5 mb-4">General information</h2>
-        <!-- ...tu primera parte aquí... -->
+        
     </div>
 
     <!-- SEGUNDA PARTE ADAPTADA -->
@@ -47,6 +47,25 @@
             
         </form>
 
+        <h2 class="h5 mb-4">Actualizar Consolidado</h2>
+
+        <form method="POST">
+
+            <input
+                type="hidden"
+                name="accion"
+                value="actualizar_consolidado"
+            >
+
+            <button
+                type="submit"
+                class="btn btn-primary"
+            >
+                Actualizar consolidado
+            </button>
+
+        </form>
+
     </div>
 
     <div class="card card-body border-0 shadow mb-4">
@@ -58,8 +77,13 @@
 
             <div class="row">
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">Proveedor</label>
+                    <label class="form-label">Nombre 1</label>
                     <input type="text" name="nombre_proveedor" class="form-control" required>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Nombre 2</label>
+                    <input type="text" name="nombre_proveedor_2" class="form-control" required>
                 </div>
 
                 <div class="col-md-1 mb-3">
@@ -78,11 +102,16 @@
                 </div>
 
                 <div class="col-md-2 mb-3">
+                    <label class="form-label">NIT</label>
+                    <input type="text" name="nit" class="form-control" required>
+                </div>
+
+                <div class="col-md-2 mb-3">
                     <label class="form-label">Ciudad</label>
                     <input type="text" name="ciudad" class="form-control">
                 </div>
 
-                <div class="col-md- mb-3">
+                <div class="col-md-3 mb-3">
                     <label class="form-label">Teléfono</label>
                     <input type="text" name="telefono" class="form-control">
                 </div>
@@ -101,10 +130,12 @@
         <table class="table table-sm table-striped">
             <thead>
                 <tr>
-                    <th>Proveedor</th>
+                    <th>Nombre 1</th>
+                    <th>Nombre 2</th>
                     <th>Sigla</th>
                     <th>Correo Faturas</th>
-                    <th>Prefijo</th>   
+                    <th>Prefijo</th>  
+                    <th>NIT</th> 
                     <th>Ciudad</th>
                     <th>Telefono</th>
                 </tr>
@@ -118,6 +149,8 @@
                     <td>{{ t[3] }}</td>
                     <td>{{ t[4] }}</td>
                     <td>{{ t[5] }}</td>
+                    <td>{{ t[6] }}</td>
+                    <td>{{ t[7] }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

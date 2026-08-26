@@ -1,13 +1,75 @@
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (1, 'NIPONAUTOS SAS', 'NIPN', 'siesafe@siesa.com', 'FN', 'CALI', '');
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (3, 'BOLIVARIANA DE CAMPEROS SAS', 'BOLCMP', 'software@mg.oficinapro.co', 'EST', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (4, 'TYM REPRESENTACIONES S.A.S', 'TYR', 'facturacionelectronica@tymautopartes.com.co', 'EMY', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (5, 'IMPORTADORA USA', 'IMPUSA', 'facturacionelectronica@impo-usa.com', 'FS', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (6, 'JAPONESA DE REPUESTOS LTDA', 'JPR', 'no-responder@facture.co', 'FEJ', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (7, 'MOTORES JAPONESES SAS', 'MTRJP', 'siesafe@siesa.com', '2FE', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (8, 'JOTA REPUESTOS S.A.', 'JTAR', 'no-responder@facture.co', 'FE', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (9, 'UDOSHIA PARTS SAS', 'UDOP', 'no-responder@worldoffice.com.co', 'UD', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (10, 'IMPORTADORA INP AUTOPARTES', 'IMPAUT', 'notificaciones@thefactoryhka.com.co', 'FMA', null, null);
-INSERT INTO proveedor (idProveedor, proveedor, siglas, correoFacturas, prefijo, ciudad, telefono) VALUES (11, 'REPUESTOS CALI SAS', 'REPCALI', 'notificaciones@thefactoryhka.com.co', 'FY', 'CALI', null);
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('MOTORES JAPONESES SAS', null, 'MJN', 'siesafe@siesa.com', '2FE', 805015305, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('REPUESTOS CALI SAS', 'REPUESTOS CALI SAS', 'RCLI', 'notificaciones@thefactoryhka.com.co>', 'FM4', 800074047, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('NIPONAUTOS S.A.S.', 'NIPONAUTOS SAS', 'NPNT', 'siesafe@siesa.com', 'FN6', 890329366, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('FRACO S.A.', 'FRACO FABRICA COLOMBIANA DE REPUESTOS AUTOMOTORES S.A. ', 'FCO', 'notificaciones@estupendo.com.co', 'CLA', 860012340, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('BOLIVARIANA DE CAMPEROS SAS', 'BOLIVARIANA DE CAMPEROS SAS', 'BDC', 'software@mg.oficinapro.co', 'EST', 811013352, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('REDPARTES S.A.S.', 'REDPARTES S.A.S.', 'REDP', 'factura-e@redpartes.com ', 'FRG', 900720611, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('DISCAMARGO S.A.', 'DISCAMARGO', 'DMGO', 'factura@transaccionesco.siigo', 'COO', 800130324, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('COMERCIALIZADORA C EFFE SAS', 'COMERCIALIZADORA C EFFE SAS', 'CCE', 'facturacionelectronica@dian.gov.co', 'FE', 900339657, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('JOTA REPUESTOS S.A.', 'JOTA REPUESTOS S.A.', 'JR', 'fedominadigital@domina.com.co', 'FE', 800079726, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('EDGAR EMIRO ROMERO GUTIERREZ TODO CAMPEROS JAPONESES', 'EDGAR EMIRO ROMERO GUTIERREZ TODO CAMPEROS JAPONESES', 'TCPR', 'facturacion@isiigo.com', 'NC', 3129475, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('MULTI PACKING S A S', 'MULTI PACKING S A S', 'MCKN', 'facturacion@multi-packing.com.co>', 'FVE', 900374850, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('VEHINYECCION S.A.S', 'VEHINYECCION S.A.S', 'VYCC', 'factura@transaccionesco.siigo.net', 'VH', 901245489, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('COMERCIAL AUTOPARTES SM S.A.S', 'COMERCIAL AUTOPARTES SM S.A.S', 'CAPT', 'mesadecontrol@facturatech.co', 'A8', 901244966, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('MOTOR JAPON S.A.S', 'MOTOR JAPON SM S.A.S', 'MPON', 'facturaemotorjapon@gmail.com', 'FCEP', 800249713, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('CASTELAUTO SAS', 'CASTELAUTO SAS', 'CAST', 'ateb.facturacion@ateb.com.co', 'FVEC', 800043701, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('AUTODICOL S.A.S', 'AUTODICOL S.A.S', 'ATCOL', 'facturacion@autodicol.com', 'FEBO', 900493066, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('YAMATO COLOMBIA CIA LTDA', 'YAMATO COLOMBIA CIA LTDA', 'YMCOL', 'siesafe@siesa.com', 'FYC', 860532352, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('IMPORTADORA INP AUTOPARTES S.A.S', 'IMPORTADORA INP AUTOPARTES S.A.S', 'INPA', 'notificaciones@thefactoryhka.com.co', 'FMA', 900617277, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('E&R EMPAQUES & AUTOPARTES S.A.S', 'E&R EMPAQUES & AUTOPARTES S.A.S', 'E&R', 'facturaelectronicaeyr@gmail.com', 'EYR', 900816986, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('PERALTA ALVIS Y CIA. S EN C', 'IMPORTADORA USA', 'PAYC', 'facturacionelectronica@impo-usa.com', 'FS', 800086855, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('INVERSIONES DAJUNI LTDA', 'INVERSIONES DAJUNI LTDA', 'IDL', 'facturacion@siigo.com', '58752', 800153249, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('AUTO NR SAS', 'AUTO NR SAS', 'ANS', 'no-responder@aliaddo.email', 'FE', 901552937, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('FRENIRODAMIENTOS LIMITADA', 'FRENIRODAMIENTOS LIMITADA', 'FLMTA', 'facturacion@siigo.com', 'CRE', 860403248, null, null);
+
+INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+VALUES ('COMPAÑIA NACIONAL DE PRODUCTOS S.A.', 'COMPAÑIA NACIONAL DE PRODUCTOS S.A.', 'CNDP', 'cnpzonafranca@hotmail.com', 'BL', 901153000, null, null);
+
 
 INSERT INTO configuracion (id, nombre_db, email_revision, token_contraseña, correos_varios) VALUES (1, 'toyonissan', 'jhonnarvaeztorres@gmail.com', 'gyse hxeh qgzy ujcm', 'siesafe@siesa.com,facturaelectronicaeyr@gmail.com,notificaciones@thefactoryhka.com.co,notificaciones@contapyme.com,facturacion@siigo.com,software@mg.oficinapro.co,software@mg.oficinapro.co,facturacionelectronica@impo-usa.com,motorjaponsas@gmail.com,facturacionelectronica@tymautopartes.com.co,no-responder@facture.co,cnpzonafranca@hotmail.com,no-responder@worldoffice.com.co');
 

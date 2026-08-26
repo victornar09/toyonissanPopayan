@@ -9,6 +9,9 @@ bin/png/*
 bin/xml/*
 !bin/xml/.gitkeep
 
+bin/xlsx/*
+!bin/xlsx/.gitkeep
+
 bdlocal/*
 !bdlocal/.gitkeep
 

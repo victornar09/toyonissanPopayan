@@ -57,181 +57,392 @@ def facturas():
     fecha_desde = request.form.get('fecha_desde', hoy)
     fecha_hasta = request.form.get('fecha_hasta', hoy)
 
-    print(f"Fecha desde: {fecha_desde}, Fecha hasta: {fecha_hasta}")
-
     if request.method == 'POST':
+
         EMAIL = obtener_email_configurado()
         PASSWORD = obtener_password_configurado()
-        DOMINIOS_DE_INTERES = obtener_dominios_configurados()
         IMAP_SERVER = 'imap.gmail.com'
+
         FOLDER_DESTINO = 'bin'
         FOLDER_DESTINO_XML = 'bin/xml/'
         FOLDER_DESTINO_PDF = 'bin/pdf/'
 
-        #print(f"Email: {EMAIL}, Password: {PASSWORD}, Dominios: {DOMINIOS_DE_INTERES}") 
+        fecha_desde_imap = datetime.strptime(
+            fecha_desde, '%Y-%m-%d'
+        ).strftime('%d-%b-%Y')
 
-        fecha_desde_imap = datetime.strptime(fecha_desde, '%Y-%m-%d').strftime('%d-%b-%Y')
-        fecha_hasta_imap = datetime.strptime(fecha_hasta, '%Y-%m-%d').strftime('%d-%b-%Y')
-
+        fecha_hasta_imap = datetime.strptime(
+            fecha_hasta, '%Y-%m-%d'
+        ).strftime('%d-%b-%Y')
 
         os.makedirs(FOLDER_DESTINO_XML, exist_ok=True)
         os.makedirs(FOLDER_DESTINO_PDF, exist_ok=True)
+
+        # -----------------------------
+        # Abrir la base de datos UNA sola vez
+        # -----------------------------
+
+        carpeta_bd = os.path.join(os.getcwd(), 'bdlocal')
+        db_files = [f for f in os.listdir(carpeta_bd) if f.endswith('.sqlite')]
+
+        if not db_files:
+            mensaje = "No existe base de datos."
+            return render_template(
+                "facturas/facturas.html",
+                mensaje=mensaje
+            )
+
+        ruta_db = os.path.join(carpeta_bd, db_files[-1])
+
+        conn = sqlite3.connect(ruta_db)
+        cursor = conn.cursor()
+
+        # -----------------------------
+        # Facturas ya descargadas
+        # -----------------------------
+
+        cursor.execute("SELECT id_factura FROM facturas")
+        facturas_existentes = {
+            fila[0] for fila in cursor.fetchall()
+        }
+
+        # -----------------------------
+        # Proveedores
+        # -----------------------------
+
+        cursor.execute("""
+            SELECT correoFacturas, nit
+            FROM proveedor
+            WHERE nit IS NOT NULL
+            AND TRIM(nit) <> ''
+        """)
+
+        proveedores = cursor.fetchall()
+
+        # -----------------------------
+        # Conectar Gmail
+        # -----------------------------
+
         mail = imaplib.IMAP4_SSL(IMAP_SERVER)
         mail.login(EMAIL, PASSWORD)
         mail.select("[Gmail]/Todos")
 
-        criterio_busqueda = f'(SINCE {fecha_desde_imap} BEFORE {fecha_hasta_imap})'
-        status, messages = mail.search(None, criterio_busqueda)
         contador = 0
-        for num in messages[0].split():
-            status, data = mail.fetch(num, '(RFC822)')
-            msg = email.message_from_bytes(data[0][1])
-            raw_remitente = msg.get("From")
-            _, correo_real = parseaddr(raw_remitente)
 
-            print(f"Procesando correo: {correo_real} y remitente: {raw_remitente}")
+        # ======================================================
+        # Buscar proveedor por proveedor
+        # ======================================================
 
-            if not any(d.lower() in correo_real.lower() for d in DOMINIOS_DE_INTERES):
+        for correo_proveedor, nit in proveedores:
+
+            criterio = (
+                f'(SINCE {fecha_desde_imap} '
+                f'BEFORE {fecha_hasta_imap} '
+                f'SUBJECT "{nit}")'
+            )
+
+            status, messages = mail.search(None, criterio)
+
+            if status != "OK":
                 continue
-            for part in msg.walk():
-                if part.get_content_maintype() == 'multipart':
+
+            if not messages[0]:
+                continue
+
+            for num in messages[0].split():
+
+                status, data = mail.fetch(num, '(RFC822)')
+
+                if status != "OK":
                     continue
-                if part.get('Content-Disposition') is None:
-                    continue
-                nombre_archivo = part.get_filename()
-                if nombre_archivo and nombre_archivo.lower().endswith('.zip'):
-                    zip_path = os.path.join(FOLDER_DESTINO, nombre_archivo)
-                    with open(zip_path, 'wb') as f:
+
+                msg = email.message_from_bytes(data[0][1])
+
+                raw_remitente = msg.get("From")
+                _, correo_real = parseaddr(raw_remitente)
+
+                print(
+                    f"Proveedor: {nit} | "
+                    f"Correo: {correo_real}"
+                )
+
+                for part in msg.walk():
+
+                    if part.get_content_maintype() == 'multipart':
+                        continue
+
+                    if part.get('Content-Disposition') is None:
+                        continue
+
+                    nombre_archivo = part.get_filename()
+
+                    if not nombre_archivo:
+                        continue
+
+                    if not nombre_archivo.lower().endswith(".zip"):
+                        continue
+
+                    zip_path = os.path.join(
+                        FOLDER_DESTINO,
+                        nombre_archivo
+                    )
+
+                    with open(zip_path, "wb") as f:
                         f.write(part.get_payload(decode=True))
-                    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+
+                    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+
                         for file in zip_ref.namelist():
-                            if file.lower().endswith('.xml'):
+
+                            if file.lower().endswith(".xml"):
+
                                 zip_ref.extract(file, FOLDER_DESTINO_XML)
-                                ruta_xml = os.path.join(FOLDER_DESTINO_XML, file)
+
+                                ruta_xml = os.path.join(
+                                    FOLDER_DESTINO_XML,
+                                    file
+                                )
+
                                 try:
+
                                     tree = ET.parse(ruta_xml)
                                     root = tree.getroot()
+
                                     ns = {
                                         'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
                                         'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2'
                                     }
-                                    # Detectar si es AttachedDocument con CDATA o Invoice directo
+
                                     if root.tag.endswith("AttachedDocument"):
-                                        description_el = root.find('.//cbc:Description', ns)
-                                        if description_el is not None and description_el.text:
-                                            invoice_root = ET.fromstring(description_el.text)
-                                        else:
+
+                                        description_el = root.find(
+                                            './/cbc:Description',
+                                            ns
+                                        )
+
+                                        if description_el is None or not description_el.text:
                                             continue
+
+                                        invoice_root = ET.fromstring(
+                                            description_el.text
+                                        )
+
                                     elif root.tag.endswith("Invoice"):
+
                                         invoice_root = root
+
                                     else:
                                         continue
 
-                                    proveedor_el = invoice_root.find('.//cac:AccountingSupplierParty//cac:PartyName/cbc:Name', ns)
-                                    nombre_proveedor = proveedor_el.text.strip() if proveedor_el is not None and proveedor_el.text else 'Desconocido'
+                                    proveedor_el = invoice_root.find(
+                                        './/cac:AccountingSupplierParty//cac:PartyName/cbc:Name',
+                                        ns
+                                    )
 
-                                    fecha_el = invoice_root.find('.//cbc:IssueDate', ns)
-                                    fecha_venta = fecha_el.text.strip() if fecha_el is not None and fecha_el.text else 'Sin fecha'
+                                    nombre_proveedor = (
+                                        proveedor_el.text.strip()
+                                        if proveedor_el is not None and proveedor_el.text
+                                        else "Desconocido"
+                                    )
 
-                                    valor_total_el = invoice_root.find('.//cbc:LegalMonetaryTotal/cbc:PayableAmount', ns)
-                                    valor_total = float(valor_total_el.text.strip()) if valor_total_el is not None and valor_total_el.text else 0
+                                    fecha_el = invoice_root.find(
+                                        ".//cbc:IssueDate",
+                                        ns
+                                    )
 
-                                    # Extraer fragmento XML de los items
-                                    items_fragment = invoice_root.findall('.//cac:InvoiceLine', ns)
-                                    items_xml = ''.join([ET.tostring(item, encoding='unicode') for item in items_fragment])
+                                    fecha_venta = (
+                                        fecha_el.text.strip()
+                                        if fecha_el is not None and fecha_el.text
+                                        else ""
+                                    )
+
+                                    valor_total_el = invoice_root.find(
+                                        ".//cbc:LegalMonetaryTotal/cbc:PayableAmount",
+                                        ns
+                                    )
+
+                                    valor_total = (
+                                        float(valor_total_el.text)
+                                        if valor_total_el is not None
+                                        else 0
+                                    )
+
+                                    items_fragment = invoice_root.findall(
+                                        ".//cac:InvoiceLine",
+                                        ns
+                                    )
+
+                                    items_xml = ''.join(
+                                        ET.tostring(
+                                            item,
+                                            encoding="unicode"
+                                        )
+                                        for item in items_fragment
+                                    )
 
                                     id_factura = os.path.splitext(file)[0]
 
-                                    # Buscar el PDF correspondiente en el ZIP
-                                    pdf_filename = None
+                                    # Ya existe
+                                    if id_factura in facturas_existentes:
+                                        continue
+
+                                    pdf_filename = ""
+
                                     for pdf_file in zip_ref.namelist():
-                                        if pdf_file.lower().endswith('.pdf'):
-                                            # Puedes mejorar la lógica de asociación aquí si hay más de un PDF
+
+                                        if pdf_file.lower().endswith(".pdf"):
+
+                                            zip_ref.extract(
+                                                pdf_file,
+                                                FOLDER_DESTINO_PDF
+                                            )
+
                                             pdf_filename = pdf_file
-                                            zip_ref.extract(pdf_file, FOLDER_DESTINO_PDF)
                                             break
 
-                                    if pdf_filename:
-                                        ubicacion_pdf = os.path.join(FOLDER_DESTINO_PDF, pdf_filename)
-                                    else:
-                                        ubicacion_pdf = ''
+                                    ubicacion_pdf = (
+                                        os.path.join(
+                                            FOLDER_DESTINO_PDF,
+                                            pdf_filename
+                                        )
+                                        if pdf_filename
+                                        else ""
+                                    )
 
-                                    # Insertar en la base de datos
-                                    carpeta_bd = os.path.join(os.getcwd(), 'bdlocal')
-                                    db_files = [f for f in os.listdir(carpeta_bd) if f.endswith('.sqlite')]
-                                    if db_files:
-                                        ruta_db = os.path.join(carpeta_bd, db_files[-1])
-                                        conn = sqlite3.connect(ruta_db)
-                                        cursor = conn.cursor()
-                                        cursor.execute("SELECT COUNT(*) FROM facturas WHERE id_factura = ?", (id_factura,))
-                                        existe = cursor.fetchone()[0]
-                                        if not existe:
-                                            cursor.execute("""
-                                                INSERT INTO facturas (id_factura, fecha, proveedor, valor_total, correo, texto_xml, ubicacion_pdf)
-                                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                                            """, (id_factura, fecha_venta, nombre_proveedor, valor_total, correo_real, items_xml, ubicacion_pdf))
-                                            #conn.commit()
+                                    cursor.execute("""
+                                        INSERT INTO facturas
+                                        (
+                                            id_factura,
+                                            fecha,
+                                            proveedor,
+                                            valor_total,
+                                            correo,
+                                            texto_xml,
+                                            ubicacion_pdf
+                                        )
+                                        VALUES
+                                        (?,?,?,?,?,?,?)
+                                    """,
+                                    (
+                                        id_factura,
+                                        fecha_venta,
+                                        nombre_proveedor,
+                                        valor_total,
+                                        correo_real,
+                                        items_xml,
+                                        ubicacion_pdf
+                                    ))
 
-                                            # Insertar los ítems de la factura en inventarioFacturas
-                                            # for line in invoice_root.findall('.//cac:InvoiceLine', ns):
-                                            #     descripcion_el = line.find('.//cac:Item/cbc:Description', ns)
-                                            #     descripcion = descripcion_el.text.strip() if descripcion_el is not None and descripcion_el.text else 'SIN_DESCRIPCION'
+                                    facturas_existentes.add(id_factura)
 
-                                            #     cantidad_el = line.find('cbc:InvoicedQuantity', ns)
-                                            #     cantidad = int(float(cantidad_el.text.strip() if cantidad_el is not None and cantidad_el.text else 0))
+                                    for line in invoice_root.findall(
+                                        ".//cac:InvoiceLine",
+                                        ns
+                                    ):
 
-                                            #     precio_unitario_el = line.find('.//cac:Price/cbc:PriceAmount', ns)
-                                            #     precio_unitario = float(precio_unitario_el.text.strip() if precio_unitario_el is not None and precio_unitario_el.text else 0)
+                                        descripcion_el = line.find(
+                                            ".//cac:Item/cbc:Description",
+                                            ns
+                                        )
 
-                                            #     cursor.execute("""
-                                            #         INSERT OR REPLACE INTO inventarioFacturas (id_factura, descripcion_item, cantidad, valor_unitario)
-                                            #         VALUES (?, ?, ?, ?)
-                                            #     """, (id_factura, descripcion, cantidad, precio_unitario))
-                                            # conn.commit()
+                                        descripcion = (
+                                            descripcion_el.text.strip()
+                                            if descripcion_el is not None and descripcion_el.text
+                                            else "SIN_DESCRIPCION"
+                                        )
 
-                                            for line in invoice_root.findall('.//cac:InvoiceLine', ns):
-                                                # Descripción
-                                                descripcion_el = line.find('.//cac:Item/cbc:Description', ns)
-                                                descripcion = descripcion_el.text.strip() if descripcion_el is not None and descripcion_el.text else 'SIN_DESCRIPCION'
+                                        cantidad_el = line.find(
+                                            "cbc:InvoicedQuantity",
+                                            ns
+                                        )
 
-                                                # Cantidad
-                                                cantidad_el = line.find('cbc:InvoicedQuantity', ns)
-                                                cantidad = int(float(cantidad_el.text.strip() if cantidad_el is not None and cantidad_el.text else 0))
+                                        cantidad = int(float(
+                                            cantidad_el.text
+                                            if cantidad_el is not None
+                                            else 0
+                                        ))
 
-                                                # Precio unitario
-                                                precio_unitario_el = line.find('.//cac:Price/cbc:PriceAmount', ns)
-                                                precio_unitario = float(precio_unitario_el.text.strip() if precio_unitario_el is not None and precio_unitario_el.text else 0)
+                                        precio_el = line.find(
+                                            ".//cac:Price/cbc:PriceAmount",
+                                            ns
+                                        )
 
-                                                # Referencia (toma SellersItemIdentification o StandardItemIdentification, el que exista)
-                                                referencia_1_el = line.find('.//cac:SellersItemIdentification/cbc:ID', ns)
-                                                referencia_2_el = line.find('.//cac:StandardItemIdentification/cbc:ID', ns)
-                                                referencia = None
-                                                if referencia_1_el is not None and referencia_1_el.text:
-                                                    referencia = referencia_1_el.text.strip()
-                                                elif referencia_2_el is not None and referencia_2_el.text:
-                                                    referencia = referencia_2_el.text.strip()
-                                                else:
-                                                    referencia = 'SIN_REFERENCIA'
+                                        precio = (
+                                            float(precio_el.text)
+                                            if precio_el is not None
+                                            else 0
+                                        )
 
-                                                # Insertar en la base de datos (agregando el campo referencia)
-                                                cursor.execute("""
-                                                    INSERT OR REPLACE INTO inventarioFacturas (
-                                                        id_factura, descripcion_item, cantidad, valor_unitario, referencia
-                                                    )
-                                                    VALUES (?, ?, ?, ?, ?)
-                                                """, (id_factura, descripcion, cantidad, precio_unitario, referencia))
-                                            conn.commit()
+                                        ref1 = line.find(
+                                            ".//cac:SellersItemIdentification/cbc:ID",
+                                            ns
+                                        )
 
-                                        conn.close()
+                                        ref2 = line.find(
+                                            ".//cac:StandardItemIdentification/cbc:ID",
+                                            ns
+                                        )
+
+                                        if ref1 is not None and ref1.text:
+                                            referencia = ref1.text.strip()
+
+                                        elif ref2 is not None and ref2.text:
+                                            referencia = ref2.text.strip()
+
+                                        else:
+                                            referencia = "SIN_REFERENCIA"
+
+                                        cursor.execute("""
+                                            INSERT OR REPLACE INTO inventarioFacturas
+                                            (
+                                                id_factura,
+                                                descripcion_item,
+                                                cantidad,
+                                                valor_unitario,
+                                                referencia
+                                            )
+                                            VALUES
+                                            (?,?,?,?,?)
+                                        """,
+                                        (
+                                            id_factura,
+                                            descripcion,
+                                            cantidad,
+                                            precio,
+                                            referencia
+                                        ))
+
+                                    contador += 1
+
                                 except Exception as e:
-                                    print(f"Error procesando XML {file}: {e}")
 
-                            if file.lower().endswith('.pdf'):
-                                zip_ref.extract(file, FOLDER_DESTINO_PDF)
+                                    print(
+                                        f"Error procesando XML {file}: {e}"
+                                    )
+
+                            elif file.lower().endswith(".pdf"):
+
+                                zip_ref.extract(
+                                    file,
+                                    FOLDER_DESTINO_PDF
+                                )
+
                     os.remove(zip_path)
-                    contador += 1
+
+        conn.commit()
+        conn.close()
+
         mail.logout()
-        mensaje = f"Descarga completada. Se procesaron {contador} archivos ZIP."
+
+        mensaje = (
+            f"Descarga completada. "
+            f"Se procesaron {contador} facturas."
+        )
+
+    # return render_template(
+    #     "facturas/facturas.html",
+    #     mensaje=mensaje
+    # )
 
     # Consultar facturas para mostrar en la tabla
     facturas_list = []
@@ -440,27 +651,27 @@ def ver_factura(id_factura):
     # ===============================
     # GET → Mostrar factura
     # ===============================
-    cursor.execute("""
-        SELECT proveedor, fecha, valor_total
-        FROM facturas
-        WHERE id_factura = ?
-    """, (id_factura,))
-    factura = cursor.fetchone()
+    # cursor.execute("""
+    #     SELECT proveedor, fecha, valor_total
+    #     FROM facturas
+    #     WHERE id_factura = ?
+    # """, (id_factura,))
+    # factura = cursor.fetchone()
 
-    cursor.execute("""
-        SELECT descripcion_item, cantidad, valor_unitario, inventariado
-        FROM inventarioFacturas
-        WHERE id_factura = ?
-    """, (id_factura,))
-    items_factura = cursor.fetchall()
+    # cursor.execute("""
+    #     SELECT referencia, descripcion_item, cantidad, valor_unitario, inventariado
+    #     FROM inventarioFacturas
+    #     WHERE id_factura = ?
+    # """, (id_factura,))
+    # items_factura = cursor.fetchall()
 
 
-    return render_template(
-        'facturas/detalle.html',
-        factura=factura,
-        items_factura=items_factura,
-        bartender_templates=bartender_templates
-    )
+    # return render_template(
+    #     'facturas/detalle.html',
+    #     factura=factura,
+    #     items_factura=items_factura,
+    #     bartender_templates=bartender_templates
+    # )
 
     # Modo GET: mostrar factura
     cursor.execute("""
@@ -471,7 +682,7 @@ def ver_factura(id_factura):
     factura = cursor.fetchone()
 
     cursor.execute("""
-        SELECT descripcion_item, cantidad, valor_unitario, inventariado
+        SELECT referencia, descripcion_item, cantidad, valor_unitario, inventariado
         FROM inventarioFacturas
         WHERE id_factura = ?
     """, (id_factura,))

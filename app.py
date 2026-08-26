@@ -16,6 +16,7 @@ from email.header import decode_header
 from email.utils import parseaddr
 import os
 import zipfile
+import pandas as pd
 
 app = Flask(__name__)
 app.secret_key = 'clave-secreta-muy-segura'
@@ -28,6 +29,419 @@ app.register_blueprint(grupo_bp)
 
 # Ruta absoluta del directorio 'bin/codigos'
 RUTA_CODIGOS = os.path.join(os.path.dirname(__file__), 'bin', 'codigos')
+
+def ejecutar_sql_archivo(conn, archivo_sql):
+
+    ruta_sql = os.path.join(
+        os.path.dirname(__file__),
+        "database",
+        archivo_sql
+    )
+
+    with open(
+        ruta_sql,
+        "r",
+        encoding="utf-8"
+    ) as archivo:
+
+        sql = archivo.read()
+
+    conn.executescript(sql)
+    conn.commit()
+
+
+
+def normalizar_valor(valor):
+    """
+    Convierte valores vacíos/NaN en None
+    y limpia espacios de textos.
+    """
+
+    if valor is None:
+        return None
+
+    if pd.isna(valor):
+        return None
+
+    if isinstance(valor, str):
+        valor = valor.strip()
+
+        if not valor:
+            return None
+
+    return valor
+
+
+def actualizar_consolidado(conn, df):
+
+    # ==========================================================
+    # CAMPOS QUE SE VAN A COMPARAR Y ACTUALIZAR
+    # ==========================================================
+
+    campos = [
+        "idProveedor",
+        "referenciaRepuesto",
+        "equivalente",
+        "descripcion",
+        "marca",
+        "carro",
+        "tipo",
+        "tipoMotor",
+        "precioListado",
+        "proveedor",
+        "lado",
+        "ladoAbreviado",
+        "repuesto",
+        "modelo",
+        "otros",
+        "medida",
+        "descripcionEstandarizada"
+    ]
+
+    # ==========================================================
+    # VALIDAR COLUMNAS NECESARIAS
+    # ==========================================================
+
+    columnas_necesarias = [
+        "abrevProveedor",
+        "referenciaProveedor"
+    ] + campos
+
+    faltantes = [
+        columna
+        for columna in columnas_necesarias
+        if columna not in df.columns
+    ]
+
+    if faltantes:
+
+        raise ValueError(
+            "Faltan las siguientes columnas en el DataFrame: "
+            + ", ".join(faltantes)
+        )
+
+    cursor = conn.cursor()
+
+    # ==========================================================
+    # LEER REGISTROS EXISTENTES DE SQLITE
+    # ==========================================================
+
+    columnas_bd = [
+        "referenciaProveedor",
+        "abrevProveedor"
+    ] + campos
+
+    cursor.execute("""
+        SELECT
+            referenciaProveedor,
+            abrevProveedor,
+            idProveedor,
+            referenciaRepuesto,
+            equivalente,
+            descripcion,
+            marca,
+            carro,
+            tipo,
+            tipoMotor,
+            precioListado,
+            proveedor,
+            lado,
+            ladoAbreviado,
+            repuesto,
+            modelo,
+            otros,
+            medida,
+            descripcionEstandarizada
+        FROM consolidado
+    """)
+
+    registros_bd = cursor.fetchall()
+
+    # ==========================================================
+    # CREAR DICCIONARIO DE LOS REGISTROS EXISTENTES
+    #
+    # LLAVE:
+    #
+    #     abrevProveedor + referenciaProveedor
+    #
+    # ==========================================================
+
+    bd = {}
+
+    for registro in registros_bd:
+
+        datos_bd = dict(
+            zip(columnas_bd, registro)
+        )
+
+        referencia = normalizar_valor(
+            datos_bd["referenciaProveedor"]
+        )
+
+        abrev_proveedor = normalizar_valor(
+            datos_bd["abrevProveedor"]
+        )
+
+        if referencia is None or abrev_proveedor is None:
+            continue
+
+        clave = (
+            str(abrev_proveedor).strip().upper(),
+            str(referencia).strip().upper()
+        )
+
+        bd[clave] = datos_bd
+
+    # ==========================================================
+    # CONTADORES
+    # ==========================================================
+
+    nuevos = 0
+    modificados = 0
+    sin_cambios = 0
+
+    # ==========================================================
+    # RECORRER DATAFRAME
+    # ==========================================================
+
+    for _, fila in df.iterrows():
+
+        # ------------------------------------------------------
+        # OBTENER LLAVE
+        # ------------------------------------------------------
+
+        referencia = normalizar_valor(
+            fila["referenciaProveedor"]
+        )
+
+        abrev_proveedor = normalizar_valor(
+            fila["abrevProveedor"]
+        )
+
+        # No podemos procesar sin referencia
+        if referencia is None:
+            continue
+
+        # No podemos identificar el proveedor
+        if abrev_proveedor is None:
+            continue
+
+        referencia = str(
+            referencia
+        ).strip()
+
+        abrev_proveedor = str(
+            abrev_proveedor
+        ).strip()
+
+        clave = (
+            abrev_proveedor.upper(),
+            referencia.upper()
+        )
+
+        # ------------------------------------------------------
+        # PREPARAR DATOS
+        # ------------------------------------------------------
+
+        datos = {}
+
+        for campo in campos:
+
+            datos[campo] = normalizar_valor(
+                fila[campo]
+            )
+
+        # ======================================================
+        # REGISTRO NUEVO
+        # ======================================================
+
+        if clave not in bd:
+
+            cursor.execute("""
+                INSERT INTO consolidado (
+                    referenciaProveedor,
+                    abrevProveedor,
+                    idProveedor,
+                    referenciaRepuesto,
+                    equivalente,
+                    descripcion,
+                    marca,
+                    carro,
+                    tipo,
+                    tipoMotor,
+                    precioListado,
+                    proveedor,
+                    lado,
+                    ladoAbreviado,
+                    repuesto,
+                    modelo,
+                    otros,
+                    medida,
+                    descripcionEstandarizada
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+            """, (
+                referencia,
+                abrev_proveedor,
+                datos["idProveedor"],
+                datos["referenciaRepuesto"],
+                datos["equivalente"],
+                datos["descripcion"],
+                datos["marca"],
+                datos["carro"],
+                datos["tipo"],
+                datos["tipoMotor"],
+                datos["precioListado"],
+                datos["proveedor"],
+                datos["lado"],
+                datos["ladoAbreviado"],
+                datos["repuesto"],
+                datos["modelo"],
+                datos["otros"],
+                datos["medida"],
+                datos["descripcionEstandarizada"]
+            ))
+
+            nuevos += 1
+
+            # --------------------------------------------------
+            # Agregar inmediatamente al diccionario
+            #
+            # Esto evita intentar insertar nuevamente
+            # si la misma llave aparece otra vez.
+            # --------------------------------------------------
+
+            bd[clave] = {
+                "referenciaProveedor": referencia,
+                "abrevProveedor": abrev_proveedor,
+                **datos
+            }
+
+            continue
+
+        # ======================================================
+        # REGISTRO EXISTENTE
+        # ======================================================
+
+        registro_bd = bd[clave]
+
+        cambio = False
+
+        # ------------------------------------------------------
+        # COMPARAR CAMPOS
+        # ------------------------------------------------------
+
+        for campo in campos:
+
+            valor_excel = normalizar_valor(
+                datos.get(campo)
+            )
+
+            valor_bd = normalizar_valor(
+                registro_bd.get(campo)
+            )
+
+            # Comparar como texto cuando sean strings
+            if isinstance(valor_excel, str):
+                valor_excel = valor_excel.strip()
+
+            if isinstance(valor_bd, str):
+                valor_bd = valor_bd.strip()
+
+            if valor_excel != valor_bd:
+
+                cambio = True
+                break
+
+        # ======================================================
+        # REGISTRO MODIFICADO
+        # ======================================================
+
+        if cambio:
+
+            cursor.execute("""
+                UPDATE consolidado
+                SET
+                    idProveedor = ?,
+                    referenciaRepuesto = ?,
+                    equivalente = ?,
+                    descripcion = ?,
+                    marca = ?,
+                    carro = ?,
+                    tipo = ?,
+                    tipoMotor = ?,
+                    precioListado = ?,
+                    proveedor = ?,
+                    lado = ?,
+                    ladoAbreviado = ?,
+                    repuesto = ?,
+                    modelo = ?,
+                    otros = ?,
+                    medida = ?,
+                    descripcionEstandarizada = ?,
+                    fechaActualizacion =
+                        CURRENT_TIMESTAMP
+                WHERE
+                    abrevProveedor = ?
+                    AND referenciaProveedor = ?
+            """, (
+                datos["idProveedor"],
+                datos["referenciaRepuesto"],
+                datos["equivalente"],
+                datos["descripcion"],
+                datos["marca"],
+                datos["carro"],
+                datos["tipo"],
+                datos["tipoMotor"],
+                datos["precioListado"],
+                datos["proveedor"],
+                datos["lado"],
+                datos["ladoAbreviado"],
+                datos["repuesto"],
+                datos["modelo"],
+                datos["otros"],
+                datos["medida"],
+                datos["descripcionEstandarizada"],
+                abrev_proveedor,
+                referencia
+            ))
+
+            modificados += 1
+
+            # Actualizar también la copia en memoria
+            bd[clave] = {
+                "referenciaProveedor": referencia,
+                "abrevProveedor": abrev_proveedor,
+                **datos
+            }
+
+        # ======================================================
+        # REGISTRO SIN CAMBIOS
+        # ======================================================
+
+        else:
+
+            sin_cambios += 1
+
+    # ==========================================================
+    # GUARDAR CAMBIOS
+    # ==========================================================
+
+    conn.commit()
+
+    # ==========================================================
+    # RESULTADO
+    # ==========================================================
+
+    return {
+        "nuevos": nuevos,
+        "modificados": modificados,
+        "sin_cambios": sin_cambios,
+        "total": nuevos + modificados + sin_cambios
+    }
 
 @app.route('/bin/codigos/<path:filename>')
 def servir_codigos(filename):
@@ -84,173 +498,37 @@ def configuracion():
         accion = request.form.get('accion')
 
         if accion == 'crear_bd':
+
             nombre_db = request.form.get('nombre_db')
+
             if nombre_db:
-                ruta_db = os.path.join(carpeta_bd, f"{nombre_db}.sqlite")
+
+                ruta_db = os.path.join(
+                    carpeta_bd,
+                    f"{nombre_db}.sqlite"
+                )
+
                 try:
+
                     conn = sqlite3.connect(ruta_db)
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                                   
-                        create table main.bartenderFiles
-                        (
-                            idBartenderFiles INTEGER      not null
-                                constraint bartenderFiles_pk
-                                    primary key autoincrement,
-                            name             varchar(200) not null,
-                            ubicacion        varchar(250) not null,
-                            numeroColumnas   integer      not null,
-                            activo           BLOB
-                        );
-                    """)
 
-                    cursor.execute("""
-                                   
-                        create table configuracion
-                        (
-                            id               INTEGER
-                                primary key autoincrement,
-                            nombre_db        TEXT,
-                            email_revision   TEXT,
-                            token_contraseña TEXT,
-                            correos_varios   TEXT
-                        );
-                    """)
-                    
-                    cursor.execute("""
-                        create table facturas
-                        (
-                            id            INTEGER
-                                primary key autoincrement,
-                            id_factura    TEXT,
-                            fecha         datetime,
-                            proveedor     TEXT,
-                            valor_total   REAL,
-                            correo        TEXT,
-                            texto_xml     TEXT,
-                            ubicacion_pdf TEXT
-                        );
-                    """)
+                    ejecutar_sql_archivo(
+                        conn,
+                        "estructura.sql"
+                    )
 
-                    cursor.execute("""
-                                   
-                        create table main.grupoUnico
-                        (
-                            idGrupo     integer      not null
-                                constraint grupoUnico_pk
-                                    primary key autoincrement,
-                            grupo       varchar(100) not null,
-                            variante    varchar(200) not null,
-                            tipo        varchar(100),
-                            abreviacion varchar(20)  not null
-                        );
-                    """)
-                                   
-                    cursor.execute("""
-                        create table inventarioFacturas
-                        (
-                            id                 INTEGER
-                                primary key autoincrement,
-                            id_factura         TEXT ,
-                            descripcion_item   TEXT UNIQUE,
-                            cantidad           INTEGER,
-                            valor_unitario     REAL,
-                            referencia         TEXT,
-                            inventariado       BOOLEAN default 0,
-                            id_inventarioUnico integer
-                        );
-                    """)
-
-
-
-                    cursor.execute("""               
-                        create table inventarioUnico
-                        (
-                            id                 INTEGER
-                                primary key autoincrement,
-                            codigoBarras       TEXT,
-                            referencia         VARCHAR(100),
-                            descripcion        TEXT,
-                            cantidad           INTEGER,
-                            precioVenta        REAL,
-                            precioVentaCifrado TEXT,
-                            precioMaxDescuento REAL,
-                            grupo              TEXT,
-                            proveedor          VARCHAR(200) NOT NULL,
-                            fechaActualizacion DATE NOT NULL, 
-                            idUbicacion        INTEGER
-                            
-                        );
-                    """)
-                    cursor.execute("""
-                        create unique index idx_inventario_descripcion
-                            on inventarioUnico (descripcion);
-                    """)
-                                   
-                    cursor.execute("""
-                        CREATE TRIGGER set_codigoBarras
-                        AFTER INSERT ON inventarioUnico
-                        FOR EACH ROW
-                        BEGIN
-                            UPDATE inventarioUnico
-                            SET codigoBarras = printf('%08d', NEW.id)
-                            WHERE id = NEW.id;
-                        END;
-                    """)
-
-                    cursor.execute("""
-                        create table main.proveedor
-                        (
-                            idProveedor    integer      not null
-                                constraint proveedor_pk
-                                    primary key autoincrement,
-                            proveedor      varchar(500) not null,
-                            siglas         varchar(100) not null,
-                            correoFacturas varchar(500) not null,
-                            prefijo        varchar(20)  not null,
-                            ciudad         varchar(100),
-                            telefono       integer
-                        );
-                    """)
-
-                    cursor.execute("""
-                        create table Ubicacion
-                        (
-                            idUbicacion     integer           not null
-                                constraint Ubicacion_pk
-                                    primary key autoincrement,
-                            descripcion     varchar(100)
-                                constraint Ubicacion_pk_2
-                                    unique,
-                            piso            integer default 1 not null,
-                            pasillo         integer default null,
-                            numero          integer,
-                            tipo            varchar(100),
-                            codigoUbicacion varchar(10)       not null
-                        );
-
-                    """)
-
-                    cursor.execute("""
-                        CREATE TRIGGER trg_ubicacion_descripcion
-                        AFTER INSERT ON Ubicacion
-                        BEGIN
-                            UPDATE Ubicacion
-                            SET descripcion =
-                                CASE
-                                    WHEN tipo = 'E' THEN 'P-' || piso || ' Pllo-' || pasillo || ' E-' || numero
-                                    WHEN tipo = 'V' THEN 'P-' || piso || ' Pllo-' || pasillo || ' V-' || numero
-                                    WHEN tipo = 'C' THEN 'P-' || piso || ' Pllo-' || pasillo || ' Caja-' || numero
-                                END
-                            WHERE rowid = NEW.rowid;
-                        END;
-                    """)
-
-                    conn.commit()
                     conn.close()
-                    mensaje = f"Base de datos '{nombre_db}' creada correctamente."
+
+                    mensaje = (
+                        f"Base de datos '{nombre_db}' "
+                        "creada correctamente."
+                    )
+
                 except Exception as e:
-                    mensaje = f"Error al crear la base de datos: {e}"
+
+                    mensaje = (
+                        f"Error al crear la base de datos: {e}"
+                    )
 
         elif accion == 'guardar_config':
             email_revision = request.form.get('email_revision')
@@ -348,26 +626,79 @@ def configuracion():
 
         elif accion == 'guardar_proveedor':
             nombre_proveedor = request.form.get('nombre_proveedor')
+            nombre_proveedor_2 = request.form.get('nombre_proveedor_2')
             sigla = request.form.get('sigla')
             correo_facturas = request.form.get('correo_facturas')
             prefijo = request.form.get('prefijo')
+            nit = request.form.get('nit')
             ciudad = request.form.get('ciudad')
             telefono = request.form.get('telefono')
 
-            if ruta_db and nombre_proveedor and sigla and correo_facturas and prefijo:
+            if ruta_db and nombre_proveedor and sigla and correo_facturas and prefijo and nit:
                 try:
                     conn = sqlite3.connect(ruta_db)
                     cursor = conn.cursor()
                     cursor.execute("""          
-                        INSERT INTO proveedor (proveedor, siglas, correoFacturas, prefijo, ciudad, telefono)
-                        VALUES (?, ?, ?, ?, ?, ?);
-                    """, (nombre_proveedor, sigla, correo_facturas, prefijo, ciudad, telefono))
+                        INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                    """, (nombre_proveedor, nombre_proveedor_2, sigla, correo_facturas, prefijo, nit, ciudad, telefono))
                     conn.commit()
                     conn.close()
                     mensaje = "Proveedor registrado correctamente."
                 except Exception as e:
                     mensaje = f"Error al registrar proveedor: {e}"
 
+        elif accion == "actualizar_consolidado":
+
+            #try:
+
+            from procesamiento.consolidado import (
+                procesar_consolidado
+            )
+
+            ruta_consolidado = os.path.join(
+                os.path.dirname(__file__),
+                "bin/xlsx",
+                "CONSOLIDADO.xlsx"
+            )
+
+            ruta_estandarizacion = os.path.join(
+                os.path.dirname(__file__),
+                "bin/xlsx",
+                "estandarizacion.xlsx"
+            )
+
+            
+
+            # 1. Procesar Excel
+            df = procesar_consolidado(
+                ruta_consolidado,
+                ruta_estandarizacion
+            )
+
+            print(df.head(10).to_string())
+            print("========== PRUEBA DF ==========")
+
+            conn = sqlite3.connect(ruta_db)
+
+            # 2. Actualizar SQLite
+            resultado = actualizar_consolidado(
+                conn,
+                df
+            )
+
+            mensaje = (
+                "Consolidado actualizado. "
+                f"Nuevos: {resultado['nuevos']} | "
+                f"Modificados: {resultado['modificados']} | "
+                f"Sin cambios: {resultado['sin_cambios']}"
+            )
+
+            # except Exception as e:
+
+            #     mensaje = (
+            #         f"Error actualizando consolidado: {e}"
+            #     )
 
     bartender_templates = []
 
@@ -408,7 +739,7 @@ def configuracion():
             conn = sqlite3.connect(ruta_db)
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT proveedor, siglas, correoFacturas, prefijo, ciudad, telefono FROM proveedor
+                SELECT nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono FROM proveedor
             """)
             proveedores = cursor.fetchall()
             conn.close()
