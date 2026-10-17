@@ -834,3 +834,145 @@ def procesar_consolidado(
     print(df.head(10).to_string())
 
     return df
+
+def procesar_dataframe_pendientes(df, archivo_estandarizacion):
+
+    diccionarios = cargar_diccionarios(
+        archivo_estandarizacion
+    )
+
+    ESTANDARIZACION = diccionarios["ESTANDARIZACION"]
+    LADOS = diccionarios["LADOS"]
+    LADOS_ORDEN = diccionarios["ABRELADO"]
+    AJUSTES = diccionarios["AJUSTES"]
+    ABREVIATURAS = diccionarios["ABREVIATURAS"]
+
+    # --------------------------------
+    # Preparar reglas
+    # --------------------------------
+
+    estandarizacion_reglas = sorted(
+        ESTANDARIZACION.items(),
+        key=lambda x: len(str(x[0]).strip()),
+        reverse=True
+    )
+
+    patrones = []
+
+    for original, estandarizado in estandarizacion_reglas:
+
+        original = str(original).strip()
+
+        if not original:
+            continue
+
+        patron = re.compile(
+            r"(?<!\w)"
+            + re.escape(original)
+            + r"(?!\w)",
+            flags=re.IGNORECASE
+        )
+
+        patrones.append(
+            (
+                patron,
+                str(estandarizado).strip()
+            )
+        )
+
+
+    df = df.copy()
+
+    # ==========================================
+    # Aplicar ajustes a descripción
+    # ==========================================
+
+    df = reemplazar_descripcion_excel(
+        df,
+        AJUSTES
+    )
+
+    # --------------------------------
+    # Procesar registros
+    # --------------------------------
+
+    for i, fila in df.iterrows():
+
+        # CARRO
+        carro = fila.get("carro", "")
+
+        if (
+            pd.isna(carro)
+            or str(carro).strip() == ""
+        ):
+
+            marca = detectar_marca(
+                fila["descripcion"],
+                ABREVIATURAS
+            )
+
+            if marca:
+                df.at[i, "carro"] = marca
+
+        # LADO
+        lado = extraer_lado(
+            fila["descripcion"],
+            LADOS
+        )
+
+        df.at[i, "lado"] = lado
+
+        # LADO ABREVIADO
+        df.at[i, "ladoAbreviado"] = abreviar_lado(
+            lado,
+            LADOS_ORDEN
+        )
+
+        # REPUESTO
+        repuesto = extraer_repuesto(
+            fila["descripcion"],
+            ABREVIATURAS,
+            LADOS
+        )
+
+        repuesto = estandarizar_repuesto(
+            repuesto,
+            patrones
+        )
+
+        df.at[i, "repuesto"] = repuesto
+
+        # MODELO
+        df.at[i, "modelo"] = extraer_modelo(
+            fila["descripcion"],
+            ABREVIATURAS,
+            LADOS
+        )
+
+        # OTROS
+        df.at[i, "otros"] = extraer_otros(
+            fila["descripcion"]
+        )
+
+        # MEDIDA
+        medida = extraer_medida(
+            fila.get("referenciaRepuesto")
+        )
+
+        if not medida:
+            medida = extraer_medida(
+                fila.get("equivalente")
+            )
+
+        df.at[i, "medida"] = medida
+
+    # --------------------------------
+    # DESCRIPCIÓN ESTANDARIZADA
+    # --------------------------------
+
+    df["descripcionEstandarizada"] = df.apply(
+        concatenar_descripcion,
+        axis=1
+    )
+
+    return df

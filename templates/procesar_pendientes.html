@@ -1,0 +1,449 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- ========================================= -->
+    <!-- TITULO -->
+    <!-- ========================================= -->
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+
+        <div>
+            <h3 class="mb-1">
+                Procesar artículos pendientes
+            </h3>
+
+            <p class="text-muted mb-0">
+                Complete la información de los artículos
+                que desea ingresar al consolidado.
+            </p>
+        </div>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- BUSCAR FACTURA -->
+    <!-- ========================================= -->
+
+    <div class="card mb-4">
+
+        <div class="card-header">
+            <strong>Buscar factura</strong>
+        </div>
+
+        <div class="card-body">
+
+            <form
+                method="POST"
+                action="{{ url_for('procesar_pendientes') }}"
+            >
+
+                <div class="row align-items-end">
+
+                    <div class="col-md-4">
+
+                        <label
+                            for="id_factura"
+                            class="form-label"
+                        >
+                            ID de factura
+                        </label>
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="id_factura"
+                            name="id_factura"
+                            value="{% if factura %}{{ factura[0] }}{% endif %}"
+                            placeholder="Ingrese el ID de la factura"
+                            required
+                        >
+
+                    </div>
+
+                    <div class="col-md-2">
+
+                        <button
+                            type="submit"
+                            class="btn btn-primary w-100"
+                        >
+                            <i class="bi bi-search"></i>
+                            Buscar factura
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    {% if factura %}
+
+    <!-- ========================================= -->
+    <!-- INFORMACIÓN DE FACTURA -->
+    <!-- ========================================= -->
+
+    <div class="card mb-5">
+
+        <div class="card-header">
+            <strong>Información de la factura</strong>
+        </div>
+
+        <div class="card-body">
+
+            <div class="row">
+
+                <div class="col-md-3">
+
+                    <label class="form-label text-muted">
+                        ID factura
+                    </label>
+
+                    <div class="fw-bold">
+                        {{ factura[0] }}
+                    </div>
+
+                </div>
+
+                <div class="col-md-2">
+
+                    <label class="form-label text-muted">
+                       ID Proveedor
+                    </label>
+
+                    <div class="fw-bold">
+                        {{ factura[1] }}
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-3">
+
+                    <label class="form-label text-muted">
+                        Proveedor
+                    </label>
+
+                    <div class="fw-bold">
+                        {{ factura[2] }}
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-2">
+
+                    <label class="form-label text-muted">
+                        Fecha
+                    </label>
+
+                    <div>
+                        {{ factura[3] }}
+                    </div>
+
+                </div>
+
+
+                <div class="col-md-2">
+
+                    <label class="form-label text-muted">
+                        Total factura
+                    </label>
+
+                    <div>
+                        {{ factura[4] }}
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- ARTÍCULOS -->
+    <!-- ========================================= -->
+
+    <div class="card">
+
+        <div class="card-header d-flex justify-content-between align-items-center">
+
+            <div>
+
+                <strong>
+                    Artículos de la factura
+                </strong>
+
+                <span class="badge bg-secondary ms-2">
+                    {{ articulos|length }}
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div class="card-body p-0">
+
+            {% if articulos %}
+
+            <form
+                method="POST"
+                action="{{ url_for('procesar_pendientes') }}"
+                id="formArticulos"
+            >
+
+                <input
+                    type="hidden"
+                    name="accion"
+                    value="guardar_consolidado"
+                >
+
+                <input
+                    type="hidden"
+                    name="id_factura"
+                    value="{{ factura[0] }}"
+                >
+
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered table-hover align-middle mb-0">
+
+                        <thead class="table-light">
+
+                            <tr>
+
+                                <th>Referencia proveedor</th>
+
+                                <th>Referencia repuesto</th>
+
+                                <th>Equivalente</th>
+
+                                <th>Descripción</th>
+
+                                <th>Marca repuesto</th>
+
+                                <th>Carro</th>
+
+                                <th>Precio</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                            {% for articulo in articulos %}
+
+                            <tr>
+
+                                <!-- REFERENCIA PROVEEDOR -->
+
+                                <td>
+
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        name="referenciaProveedor[]"
+                                        value="{{ articulo.referenciaProveedor }}"
+                                    >
+
+                                </td>
+
+
+                                <!-- REFERENCIA REPUESTO -->
+
+                                <td>
+
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        name="referenciaRepuesto[]"
+                                        value="{{ articulo.referenciaRepuesto }}"
+                                    >
+
+                                </td>
+
+
+                                <!-- EQUIVALENTE -->
+
+                                <td>
+
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        name="equivalente[]"
+                                        value="{{ articulo.equivalente }}"
+                                    >
+
+                                </td>
+
+
+                                <!-- DESCRIPCIÓN -->
+
+                                <td style="min-width: 350px;">
+
+                                    <textarea
+                                        class="form-control"
+                                        name="descripcion[]"
+                                        rows="2"
+                                    >{{ articulo.descripcion }}</textarea>
+
+                                </td>
+
+
+                                <!-- MARCA -->
+
+                                <td>
+
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        name="marcaRepuesto[]"
+                                        value="{{ articulo.marcaRepuesto }}"
+                                    >
+
+                                </td>
+
+
+                                <!-- CARRO -->
+
+                                <td>
+
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        name="carro[]"
+                                        value="{{ articulo.carro }}"
+                                    >
+
+                                </td>
+
+
+                                <!-- PRECIO -->
+
+                                <td>
+
+                                    <input
+                                        type="text"
+                                        class="form-control bg-light"
+                                        value="{{ articulo.precioListado }}"
+                                        readonly
+                                    >
+
+                                    <input
+                                        type="hidden"
+                                        name="precioListado[]"
+                                        value="{{ articulo.precioListado }}"
+                                    >
+
+                                </td>
+
+                            </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+
+                <!-- ================================= -->
+                <!-- BOTONES -->
+                <!-- ================================= -->
+
+                <div class="p-3 border-top d-flex justify-content-end gap-2">
+
+                    <a
+                        href="{{ url_for('configuracion') }}"
+                        class="btn btn-secondary"
+                    >
+                        Cancelar
+                    </a>
+
+                    <button
+                        type="submit"
+                        class="btn btn-success"
+                    >
+                        <i class="bi bi-database-add"></i>
+                        Ingresar a consolidado
+                    </button>
+
+                </div>
+
+            </form>
+
+            {% else %}
+
+            <div class="p-4 text-center text-muted">
+
+                <i class="bi bi-inbox fs-1"></i>
+
+                <p class="mt-3 mb-0">
+                    Esta factura no tiene artículos registrados.
+                </p>
+
+            </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+    {% endif %}
+
+</div>
+
+
+<!-- ========================================= -->
+<!-- JAVASCRIPT -->
+<!-- ========================================= -->
+
+<!-- <script>
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const boton = document.getElementById(
+        "btnIngresarConsolidado"
+    );
+
+    if (!boton) {
+        return;
+    }
+
+    boton.addEventListener("click", function () {
+
+        const confirmar = confirm(
+            "¿Está seguro de ingresar estos artículos al consolidado?"
+        );
+
+        if (!confirmar) {
+            return;
+        }
+
+        alert(
+            "Los artículos están listos para ser procesados."
+        );
+
+    });
+
+});
+
+</script> -->
+
+{% endblock %}

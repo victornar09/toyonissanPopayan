@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, session, redirect, url_for, send_from_directory, flash
 import webbrowser
 import threading
 from auth import auth
@@ -29,6 +29,8 @@ app.register_blueprint(grupo_bp)
 
 # Ruta absoluta del directorio 'bin/codigos'
 RUTA_CODIGOS = os.path.join(os.path.dirname(__file__), 'bin', 'codigos')
+
+
 
 def ejecutar_sql_archivo(conn, archivo_sql):
 
@@ -668,7 +670,6 @@ def configuracion():
                 "estandarizacion.xlsx"
             )
 
-            
 
             # 1. Procesar Excel
             df = procesar_consolidado(
@@ -760,6 +761,381 @@ def configuracion():
         proveedores=proveedores
     )
 
+@app.route("/configuracion/procesar-pendientes", methods=["GET", "POST"])
+@app.route(
+    "/configuracion/procesar-pendientes",
+    methods=["GET", "POST"]
+)
+def procesar_pendientes():
+
+    ruta_estandarizacion = os.path.join(
+        os.path.dirname(__file__),
+        "bin/xlsx",
+        "estandarizacion.xlsx"
+    )
+
+    carpeta_bd = os.path.join(
+        os.getcwd(),
+        "bdlocal"
+    )
+
+    os.makedirs(
+        carpeta_bd,
+        exist_ok=True
+    )
+
+    db_files = [
+        f
+        for f in os.listdir(carpeta_bd)
+        if f.endswith(".sqlite")
+    ]
+
+    ruta_db = (
+        os.path.join(
+            carpeta_bd,
+            db_files[-1]
+        )
+        if db_files
+        else None
+    )
+
+    if not ruta_db:
+
+        flash(
+            "No existe una base de datos.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("configuracion")
+        )
+
+    # ==========================================
+    # GET
+    # ==========================================
+
+    if request.method == "GET":
+
+        return render_template(
+            "procesar_pendientes.html"
+        )
+
+    # ==========================================
+    # POST
+    # ==========================================
+
+    accion = request.form.get(
+        "accion",
+        "buscar_factura"
+    )
+
+    id_factura = request.form.get(
+        "id_factura"
+    )
+
+    if not id_factura:
+
+        flash(
+            "Debe ingresar un ID de factura.",
+            "warning"
+        )
+
+        return redirect(
+            url_for("procesar_pendientes")
+        )
+
+    conn = None
+
+    #try:
+
+    conn = sqlite3.connect(
+        ruta_db
+    )
+
+    cursor = conn.cursor()
+
+    # ======================================
+    # BUSCAR INFORMACIÓN DE FACTURA
+    # ======================================
+
+    cursor.execute("""
+        SELECT
+            fac.id_factura,
+            prov.idProveedor,
+            fac.proveedor,
+            fac.fecha,
+            fac.valor_total,
+            prov.siglas
+        FROM facturas fac
+
+        LEFT JOIN proveedor prov
+            ON fac.proveedor = prov.nombreProveedor
+            OR fac.proveedor = prov.nombreProveedorSecundario
+
+        WHERE fac.id_factura = ?
+    """, (
+        id_factura,
+    ))
+
+    factura = cursor.fetchone()
+
+    if not factura:
+
+        flash(
+            f"No se encontró la factura {id_factura}.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("procesar_pendientes")
+        )
+
+    # ======================================
+    # ACCIÓN 1:
+    # BUSCAR FACTURA
+    # ======================================
+
+    if accion == "buscar_factura":
+
+        cursor.execute("""
+            SELECT
+                id,
+                id_factura,
+                referencia,
+                descripcion_item,
+                valor_unitario
+            FROM inventarioFacturas
+            WHERE id_factura = ?
+        """, (
+            id_factura,
+        ))
+
+        filas = cursor.fetchall()
+
+        articulos = []
+
+        for fila in filas:
+
+            articulos.append({
+
+                "idInventarioFactura":
+                    fila[0],
+
+                "id_factura":
+                    fila[1],
+
+                "referenciaProveedor":
+                    fila[2] or "",
+
+                "referenciaRepuesto":
+                    "",
+
+                "equivalente":
+                    "",
+
+                "descripcion":
+                    fila[3] or "",
+
+                "marcaRepuesto":
+                    "",
+
+                "carro":
+                    "",
+
+                "precioListado":
+                    fila[4],
+
+                "idProveedor":
+                    factura[1],
+
+                "proveedor":
+                    factura[2],
+
+                "sigla":
+                    factura[5]
+            })
+
+        return render_template(
+            "procesar_pendientes.html",
+            factura=factura,
+            articulos=articulos
+        )
+
+    # ======================================
+    # ACCIÓN 2:
+    # INGRESAR A CONSOLIDADO
+    # ======================================
+
+    elif accion == "guardar_consolidado":
+
+
+
+        referencias_proveedor = request.form.getlist(
+            "referenciaProveedor[]"
+        )
+
+        referencias_repuesto = request.form.getlist(
+            "referenciaRepuesto[]"
+        )
+
+        equivalentes = request.form.getlist(
+            "equivalente[]"
+        )
+
+        descripciones = request.form.getlist(
+            "descripcion[]"
+        )
+
+        marcas = request.form.getlist(
+            "marcaRepuesto[]"
+        )
+
+        carros = request.form.getlist(
+            "carro[]"
+        )
+
+        precioListado = request.form.getlist(
+            "precioListado[]"
+        )
+
+        # ==================================
+        # CREAR DATAFRAME
+        # ==================================
+
+        articulos_df = []
+
+        total = len(
+            referencias_proveedor
+        )
+
+        for i in range(total):
+
+            articulos_df.append({
+
+                "referenciaProveedor":
+                    referencias_proveedor[i].strip(),
+
+                "referenciaRepuesto":
+                    referencias_repuesto[i].strip(),
+
+                "equivalente":
+                    equivalentes[i].strip(),
+
+                "descripcion":
+                    descripciones[i].strip(),
+
+                "marca":
+                    marcas[i].strip(),
+
+                "carro":
+                    carros[i].strip(),
+
+                "tipo":
+                    "",
+
+                "tipoMotor":
+                    "",
+
+                "precioListado":
+                    precioListado[i].strip(),
+
+                "proveedor":
+                    factura[2],
+
+                "idProveedor":
+                    factura[1],
+
+                "abrevProveedor":
+                    factura[5]
+
+            })
+
+        df = pd.DataFrame(
+            articulos_df
+        )
+
+        print(df.head(10).to_string())
+
+        # ==================================
+        # EJECUTAR ESTANDARIZACIÓN
+        # ==================================
+
+        from procesamiento.consolidado import (
+            procesar_dataframe_pendientes
+        )
+
+        df = procesar_dataframe_pendientes(
+            df, ruta_estandarizacion 
+        )
+
+        # ==================================
+        # VER MUESTRA EN CONSOLA
+        # ==================================
+
+        print(
+            "===== ARTÍCULOS PROCESADOS ====="
+        )
+
+        print(
+            df.head(10).to_string(
+                index=False
+            )
+        )
+
+        # ==================================
+        # INGRESAR / ACTUALIZAR CONSOLIDADO
+        # ==================================
+
+        resultado = actualizar_consolidado(
+            conn,
+            df
+        )
+
+        flash(
+            (
+                "Artículos procesados correctamente. "
+                f"Nuevos: {resultado['nuevos']} | "
+                f"Modificados: {resultado['modificados']} | "
+                f"Sin cambios: {resultado['sin_cambios']}"
+            ),
+            "success"
+        )
+
+        return redirect(
+            url_for("procesar_pendientes")
+        )
+
+    else:
+
+        flash(
+            "Acción no válida.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("procesar_pendientes")
+        )
+
+    # except Exception as e:
+
+    #     print(
+    #         "ERROR PROCESANDO PENDIENTES:",
+    #         e
+    #     )
+
+    #     flash(
+    #         f"Error procesando artículos: {e}",
+    #         "danger"
+    #     )
+
+    #     return redirect(
+    #         url_for("procesar_pendientes")
+    #     )
+
+    # finally:
+
+    #     if conn:
+    #         conn.close()
 
 
 def abrir_navegador():

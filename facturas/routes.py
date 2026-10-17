@@ -31,7 +31,7 @@ def imprimir_varios(productos, ruta_template, columna_inicio=1):
     bt = win32com.client.Dispatch("BarTender.Application")
     bt.Visible = True
 
-    # 👉 Abrir template dinámico
+
     formato = bt.Formats.Open(
         os.path.abspath(ruta_template),
         False,

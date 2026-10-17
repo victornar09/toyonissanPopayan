@@ -70,6 +70,35 @@
 
     <div class="card card-body border-0 shadow mb-4">
 
+        <div class="card h-100">
+
+            <div class="card-body">
+
+                <h5 class="card-title">
+                    Procesar pendientes
+                </h5>
+
+                <p class="card-text text-muted">
+                    Ingrese los artículos de una factura
+                    al consolidado.
+                </p>
+
+                <a
+                    href="{{ url_for('procesar_pendientes') }}"
+                    class="btn btn-primary"
+                >
+                    <i class="bi bi-box-seam"></i>
+                    Procesar pendientes
+                </a>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="card card-body border-0 shadow mb-4">
+
         <h2 class="h5 mb-4">Configuración Proveedor</h2>
 
         <form method="post" class="mb-4">
