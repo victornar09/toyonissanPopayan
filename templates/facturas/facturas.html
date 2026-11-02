@@ -81,9 +81,14 @@
                 {% for id_factura, proveedor, fecha, valor_total, ubicacion_pdf, total_articulos, articulos_sin_procesar in facturas_list %}
                 {% set pdf_filename = ubicacion_pdf.split('/')[-1] %}
                 <tr>
-                    <td><a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" class="fw-bold">{{ id_factura }}</a></td>
+                    <td>
+                        <a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" class="fw-bold">{{ id_factura }}</a>
+                        <button class="btn btn-sm btn-link p-0 ms-1" type="button" onclick="copiarIdFactura('{{ id_factura }}')" title="Copiar ID factura">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </td>
                     <td><span class="fw-normal">{{ proveedor }}</span></td>
-                    <td><span class="fw-normal">{{ fecha }}</span></td>   
+                    <td><span class="fw-normal">{{ fecha }}</span></td>
                     <td><span class="fw-bold">$ {{ valor_total }}</span></td>
                     <td>
                         {% if articulos_sin_procesar == 0 %}
@@ -94,9 +99,10 @@
                             <span class="badge bg-warning">{{ articulos_sin_procesar }} Sin procesar</span>
                         {% endif %}
                     </td>
-                    <td> 
+                    <td>
                         <a href="{{ url_for('facturas.ver_pdf', filename=pdf_filename) }}" target="_blank" class="btn btn-primary">Ver PDF</a>
                         <a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" target="_blank" class="btn btn-secondary">Ver Detalle</a>
+                        <a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}#procesar-consolidado" class="btn btn-success">Procesar a consolidado</a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -241,6 +247,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     mostrarPagina(1);
 });
+
+function copiarIdFactura(idFactura) {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(idFactura).then(function() {
+            alert('ID factura copiado: ' + idFactura);
+        }).catch(function(err) {
+            console.error('Error al copiar', err);
+        });
+    } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = idFactura;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert('ID factura copiado: ' + idFactura);
+        } catch (err) {
+            console.error('Error al copiar', err);
+        }
+        document.body.removeChild(textArea);
+    }
+}
 </script>
 
 

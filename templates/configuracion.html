@@ -26,6 +26,32 @@
             </div>
         </form>
 
+        {% if bases_disponibles %}
+        <form action="" method="post" class="mb-4">
+            <input type="hidden" name="accion" value="activar_bd">
+            <div class="row">
+                <div class="col-md-8 mb-3">
+                    <label for="bd_seleccionada" class="form-label">
+                        Base de Datos Activa
+                        {% if nombre_bd_activa %}
+                            <span class="text-success">({{ nombre_bd_activa }})</span>
+                        {% endif %}
+                    </label>
+                    <select id="bd_seleccionada" name="bd_seleccionada" class="form-select" required>
+                        {% for base in bases_disponibles %}
+                            <option value="{{ base }}" {% if base == nombre_bd_activa %}selected{% endif %}>
+                                {{ base }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-secondary w-100">Activar Base de Datos</button>
+                </div>
+            </div>
+        </form>
+        {% endif %}
+
         <form action="" method="post">
             <input type="hidden" name="accion" value="guardar_config">
             <div class="row">

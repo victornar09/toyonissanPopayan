@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS grupoUnico (
 CREATE TABLE IF NOT EXISTS inventarioFacturas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     id_factura TEXT,
-    descripcion_item TEXT UNIQUE,
+    descripcion_item TEXT,
     cantidad INTEGER,
     valor_unitario REAL,
     referencia TEXT,
@@ -48,11 +48,15 @@ CREATE TABLE IF NOT EXISTS inventarioFacturas (
     id_inventarioUnico INTEGER
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invf_llave
+ON inventarioFacturas (id_factura, referencia, descripcion_item);
+
 CREATE TABLE IF NOT EXISTS inventarioUnico (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     codigoBarras TEXT,
     referencia VARCHAR(100),
     descripcion TEXT,
+    descripcionClave TEXT,
     cantidad INTEGER,
     precioVenta REAL,
     precioVentaCifrado TEXT,
@@ -63,8 +67,11 @@ CREATE TABLE IF NOT EXISTS inventarioUnico (
     idUbicacion INTEGER
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_inventario_descripcion
-ON inventarioUnico (descripcion);
+-- Identificador lógico del producto: texto normalizado (sin tildes,
+-- mayúsculas y espacios colapsados). El código visible sigue siendo
+-- codigoBarras, generado por el trigger set_codigoBarras.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inventario_clave
+ON inventarioUnico (descripcionClave);
 
 CREATE TRIGGER IF NOT EXISTS set_codigoBarras
 AFTER INSERT ON inventarioUnico

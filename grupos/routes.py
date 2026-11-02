@@ -1,17 +1,12 @@
 from flask import Blueprint, render_template, session, redirect, url_for, request, jsonify
-import sqlite3
-import os
+
+import db
 
 grupo_bp = Blueprint('grupos', __name__, url_prefix='/grupos')
 
 def get_db():
+    return db.conectar()
 
-    carpeta_bd = os.path.join(os.getcwd(), 'bdlocal')
-    db_files = [f for f in os.listdir(carpeta_bd) if f.endswith('.sqlite')]
-    if db_files:
-        ruta_db = os.path.join(carpeta_bd, db_files[-1])
-        return sqlite3.connect(ruta_db)
-    
 
 @grupo_bp.route('/')
 def grupo_home():

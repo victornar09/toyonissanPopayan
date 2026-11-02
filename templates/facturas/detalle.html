@@ -32,67 +32,94 @@
                 <thead>
                     <tr>
                         <th class="border-gray-200"><input type="checkbox" id="selectAll"></th>
+                        <th class="border-gray-200">Estado</th>
                         <th class="border-gray-200">Referencia</th>
                         <th class="border-gray-200">Descripción</th>
                         <th class="border-gray-200">Valor Público (Ajustable)</th>
-                        <th class="border-gray-200">Cantidad Ingresada</th>						
-                        <th class="border-gray-200">Valor Unitario</th>    
+                        <th class="border-gray-200">Cantidad Ingresada</th>
+                        <th class="border-gray-200">Valor Unitario</th>
                         <th class="border-gray-200">Valor + IVA</th>
                     </tr>
                 </thead>
 
-                <tbody id="tablaFacturas">           
+                <tbody id="tablaFacturas">
                     {% for item in items_factura %}
 
-                        {% set referencia = item[0] %}
-                        {% set descripcion = item[1] %}
-                        {% set cantidad = item[2] %}
-                        {% set valor_unitario = item[3] %}
-                        {% set inventariado = item[4] == 1 %}   <!-- AQUÍ LA CORRECCIÓN -->
+                        {% set item_id = item[0] %}
+                        {% set referencia = item[1] %}
+                        {% set descripcion = item[2] %}
+                        {% set cantidad = item[3] %}
+                        {% set valor_unitario = item[4] %}
+                        {% set inventariado_flag = item[5] == 1 %}
+                        {% set est = estados_linea.get(item_id) if estados_linea else None %}
+                        {% if est %}
+                            {% set codigo_estado = est.codigo_estado %}
+                            {% set etiqueta_estado = est.etiqueta_estado %}
+                            {% set permitido = est.permitido %}
+                            {% set motivo = est.motivo %}
+                        {% else %}
+                            {% set codigo_estado = 'INVENTARIADO' if inventariado_flag else 'NO_PERMITIDO' %}
+                            {% set etiqueta_estado = 'INVENTARIADO' if inventariado_flag else 'NO INVENTARIADO NO PERMITIDO' %}
+                            {% set permitido = False %}
+                            {% set motivo = 'Estado no calculado' %}
+                        {% endif %}
 
                         {% set valor_iva = valor_unitario * 1.19 %}
                         {% set valor_publico_sugerido = ((valor_unitario * 1.19) * 1.5) | round(-3) %}
-                        
-                    <tr class="{% if inventariado %}item-inventariado{% endif %}">
-                        
+
+                    <tr class="{% if codigo_estado == 'INVENTARIADO' %}item-inventariado{% endif %}">
+
                         <td>
-                            <input 
-                                type="checkbox" 
-                                class="itemCheckbox" 
-                                name="seleccionados" 
-                                value="{{ loop.index }}"
-                                {% if inventariado %}disabled title="Este artículo ya fue inventariado"{% endif %}
+                            <input
+                                type="checkbox"
+                                class="itemCheckbox"
+                                name="seleccionados"
+                                value="{{ item_id }}"
+                                data-permitido="{{ '1' if permitido else '0' }}"
+                                {% if codigo_estado == 'INVENTARIADO' or not permitido %}disabled{% endif %}
+                                {% if codigo_estado == 'INVENTARIADO' %}title="Este artículo ya fue inventariado"{% elif not permitido %}title="{{ motivo }}"{% endif %}
                             >
                         </td>
 
                         <td>
-                            <input 
-                                type="text" 
-                                name="referencia" 
-                                class="form-control" 
-                                value="{{ referencia }}" 
-                                {% if inventariado %}readonly{% endif %}>
-                        </td>
-   
-                        <td>
-                            <input 
-                                type="text" 
-                                name="descripcion" 
-                                class="form-control" 
-                                value="{{ descripcion }}" 
-                                {% if inventariado %}readonly{% endif %}>
+                            {% if codigo_estado == 'INVENTARIADO' %}
+                                <span class="badge bg-success" title="{{ motivo }}">INVENTARIADO</span>
+                            {% elif codigo_estado == 'PERMITIDO' %}
+                                <span class="badge bg-primary" title="{{ motivo }}">NO INVENTARIADO PERMITIDO</span>
+                            {% else %}
+                                <span class="badge bg-danger" title="{{ motivo }}">NO INVENTARIADO NO PERMITIDO</span>
+                                <div class="small text-muted mt-1">{{ motivo }}</div>
+                            {% endif %}
                         </td>
 
                         <td>
-                            <input 
-                                type="text" 
-                                name="valor_publico" 
-                                class="form-control valor-publico" 
-                                value="{{ "{:,.0f}".format(valor_publico_sugerido).replace(",", ".") }}" 
-                                {% if inventariado %}readonly{% endif %}>
+                            <input
+                                type="text"
+                                name="referencia_{{ item_id }}"
+                                class="form-control"
+                                value="{{ referencia }}"
+                                {% if codigo_estado == 'INVENTARIADO' %}readonly{% endif %}>
                         </td>
 
-                        <td><span class="fw-normal">{{ cantidad }}</span></td>   
+                        <td>
+                            <input
+                                type="text"
+                                name="descripcion_{{ item_id }}"
+                                class="form-control"
+                                value="{{ descripcion }}"
+                                {% if codigo_estado == 'INVENTARIADO' %}readonly{% endif %}>
+                        </td>
+
+                        <td>
+                            <input
+                                type="text"
+                                name="valor_publico_{{ item_id }}"
+                                class="form-control valor-publico"
+                                value="{{ "{:,.0f}".format(valor_publico_sugerido).replace(",", ".") }}"
+                                {% if codigo_estado == 'INVENTARIADO' %}readonly{% endif %}>
+                        </td>
+
+                        <td><span class="fw-normal">{{ cantidad }}</span></td>
                         <td><span class="fw-bold">$ {{ "{:,.0f}".format(valor_unitario).replace(",", ".") }}</span></td>
                         <td><span class="fw-bold">$ {{ "{:,.0f}".format(valor_iva).replace(",", ".") }}</span></td>
                     </tr>
@@ -104,7 +131,10 @@
 
             <div class="d-flex justify-content-between align-items-center mt-3">
                 <span id="contadorSeleccion">Inventariar 0 ítems</span>
-                <button type="submit" class="btn btn-primary">Inventariar seleccionados</button>
+                <button type="submit" id="btnInventariar" class="btn btn-primary" disabled>Inventariar seleccionados</button>
+            </div>
+            <div class="mt-2 small text-muted">
+                Solo se pueden inventariar líneas con estado <strong>NO INVENTARIADO PERMITIDO</strong> y con coincidencia válida en <strong>consolidado</strong>.
             </div>
 
             <input type="hidden" name="template_id" id="template_id">
@@ -172,14 +202,22 @@
 
         function actualizarContador() {
             const cbs = getCheckboxes();
-            const seleccionados = cbs.filter(cb => cb.checked && !cb.disabled).length;
+            const permitidos = cbs.filter(cb => !cb.disabled && cb.dataset.permitido === '1');
+            const seleccionados = permitidos.filter(cb => cb.checked).length;
             contador.textContent = `Inventariar ${seleccionados} ítem${seleccionados === 1 ? "" : "s"}`;
 
-            const allChecked = cbs.length > 0 &&
-                               seleccionados === cbs.filter(cb => !cb.disabled).length;
+            const allChecked = permitidos.length > 0 &&
+                               seleccionados === permitidos.length;
 
-            selectAll.checked = allChecked;
-            selectAll.indeterminate = !allChecked && seleccionados > 0;
+            if (selectAll) {
+                selectAll.checked = allChecked;
+                selectAll.indeterminate = !allChecked && seleccionados > 0;
+            }
+
+            const btnInventariar = document.getElementById("btnInventariar");
+            if (btnInventariar) {
+                btnInventariar.disabled = seleccionados === 0;
+            }
         }
 
         document.addEventListener("keydown", function (e) {
@@ -190,7 +228,8 @@
             selectAll.addEventListener("change", function () {
                 const cbs = getCheckboxes();
                 cbs.forEach(cb => {
-                    if (!cb.disabled) cb.checked = selectAll.checked;
+                    if (!cb.disabled && cb.dataset.permitido === '1') cb.checked = selectAll.checked;
+                    else if (selectAll.checked) cb.checked = false;
                 });
                 actualizarContador();
             });
@@ -198,7 +237,7 @@
 
         getCheckboxes().forEach(cb => {
             cb.addEventListener("change", function () {
-                if (this.disabled && this.checked) {
+                if ((this.disabled || this.dataset.permitido !== '1') && this.checked) {
                     this.checked = false;
                     return;
                 }
@@ -249,10 +288,10 @@
         document.getElementById("formInventario").addEventListener("submit", function (e) {
             e.preventDefault(); // ⛔ NO enviar aún
 
-            const seleccionados = document.querySelectorAll(".itemCheckbox:checked:not(:disabled)");
+            const seleccionados = document.querySelectorAll(".itemCheckbox:checked:not(:disabled)[data-permitido='1']");
 
             if (seleccionados.length === 0) {
-                alert("Selecciona al menos un artículo para inventariar");
+                alert("Selecciona al menos un artículo con estado NO INVENTARIADO PERMITIDO");
                 return;
             }
 
@@ -278,5 +317,77 @@
         });
     });
 </script>
+
+<!-- ========================================= -->
+<!-- PROCESAR A CONSOLIDADO (desde detalle de factura) -->
+<!-- ========================================= -->
+<div class="card mt-4" id="procesar-consolidado">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <strong>Procesar artículos a consolidado</strong>
+            <span class="badge bg-secondary ms-2">{{ articulos_pendientes|length if articulos_pendientes else 0 }}</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if articulos_pendientes %}
+        <form method="POST" action="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}">
+            <input type="hidden" name="accion_extra" value="procesar_consolidado">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Referencia proveedor</th>
+                            <th>Referencia repuesto</th>
+                            <th>Equivalente</th>
+                            <th>Descripción</th>
+                            <th>Marca repuesto</th>
+                            <th>Carro</th>
+                            <th>Precio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for articulo in articulos_pendientes %}
+                        <tr>
+                            <td>
+                                <input type="text" class="form-control" name="referenciaProveedor[]" value="{{ articulo.referenciaProveedor }}">
+                            </td>
+                            <td>
+                                <input type="text" class="form-control" name="referenciaRepuesto[]" value="{{ articulo.referenciaRepuesto }}">
+                            </td>
+                            <td>
+                                <input type="text" class="form-control" name="equivalente[]" value="{{ articulo.equivalente }}">
+                            </td>
+                            <td style="min-width: 350px;">
+                                <textarea class="form-control" name="descripcion[]" rows="2">{{ articulo.descripcion }}</textarea>
+                            </td>
+                            <td>
+                                <input type="text" class="form-control" name="marcaRepuesto[]" value="{{ articulo.marcaRepuesto }}">
+                            </td>
+                            <td>
+                                <input type="text" class="form-control" name="carro[]" value="{{ articulo.carro }}">
+                            </td>
+                            <td>
+                                <input type="text" class="form-control bg-light" value="{{ articulo.precioListado }}" readonly>
+                                <input type="hidden" name="precioListado[]" value="{{ articulo.precioListado }}">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-3 border-top d-flex justify-content-end gap-2">
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-database-add"></i>
+                    Ingresar a consolidado
+                </button>
+            </div>
+        </form>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+            <p class="mb-0">No hay artículos para procesar.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
 
 {% endblock content %}
