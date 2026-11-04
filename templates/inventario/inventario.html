@@ -1,36 +1,46 @@
 {% extends "layouts/base.html" %}
+
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
 {% block title %}Inventario{% endblock %}
 
 {% block content %}
-<h1>Sección Inventario</h1>
-<p>Bienvenido, {{ usuario }}. Aquí puedes gestionar el inventario.</p>
+{{ encabezado_pagina(
+    'Inventario',
+    'Consulta existencias, precios, grupos y etiquetas de los artículos registrados.',
+    'inventario',
+    [('Inicio', url_for('index')), ('Inventario', None)]
+) }}
 
 <div class="card card-body border-0 shadow mb-4">
-  <h2 class="h5 mb-4">Descargar Inventario</h2>
+  <h2 class="h5 mb-3 d-flex align-items-center gap-2">{{ icono('inventario') }} Descargar inventario</h2>
+  <p class="text-muted small mb-3">Genera una copia del inventario actual en formato descargable.</p>
   <form method="post">
       <input type="hidden" name="accion" value="descargar_inventario">
       <div class="row g-2 align-items-end">
           <div class="col-md-12">
-              <button type="submit" class="btn btn-primary w-100">Descargar Inventario</button>
+              <button type="submit" class="btn btn-primary">{{ icono('pdf') }} Descargar inventario</button>
           </div>
       </div>
   </form>
 </div>
 
 <!-- Filtro de búsqueda -->
-<div class="mb-3">
+<div class="card card-body border-0 shadow mb-4">
+  <h2 class="h5 mb-3 d-flex align-items-center gap-2">{{ icono('buscar') }} Buscar artículos</h2>
   <div class="row g-2">
-      <div class="col-md-2">
-          <input type="text" id="filtroTodos" placeholder="busqueda" class="form-control">
+      <div class="col-md-4 col-lg-3">
+          <input type="text" id="filtroTodos" placeholder="Referencia, descripción, proveedor…" class="form-control">
       </div>
-      <div class="col-md-1">
+      <div class="col-md-2">
           <button id="btnLimpiarFiltros" class="btn btn-secondary w-100">Limpiar</button>
       </div>
   </div>
 </div>
 
-<div class="card card-body border-0 shadow table-wrapper table-responsive">
-  <table class="table table-hover">
+<div class="card border-0 shadow tabla-scroll">
+  <table class="table table-hover tabla-inventario-listado">
       <thead>
           <tr>
               <th class="border-gray-200">ID</th>
@@ -41,7 +51,7 @@
               <th class="border-gray-200">Proveedor</th>
               <th class="border-gray-200">Fecha Actu</th>
               <th class="border-gray-200">Grupo</th>
-              <th class="border-gray-200">imprimir</th>
+              <th class="border-gray-200">Acciones</th>
           </tr>
       </thead>
       <tbody id="tablaInventario">
@@ -63,7 +73,7 @@
                         data-cantidad="{{ cantidad }}"
                         data-precio="{{ precioVenta }}"
                         data-grupo="{{ grupo }}">
-                        ||||
+                        Editar
                     </button>
               </td>
           </tr>

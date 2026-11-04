@@ -1,0 +1,48 @@
+{% from "includes/iconos.html" import icono %}
+
+{#
+  Encabezado de página reutilizable.
+
+  Parámetros:
+    titulo        Texto principal (obligatorio).
+    descripcion   Descripción breve del módulo.
+    icono_nombre  Nombre del icono definido en includes/iconos.html.
+    migas         Lista de tuplas (etiqueta, url|None) para el breadcrumb.
+
+  Para agregar acciones a la derecha, usar el bloque `call`:
+    {% call encabezado_pagina('Facturas', '...', 'facturas', migas) %}
+        <a class="btn ...">Acción</a>
+    {% endcall %}
+#}
+{% macro encabezado_pagina(titulo, descripcion='', icono_nombre='modulo', migas=[]) -%}
+<header class="page-header">
+    <div class="page-header-texto">
+        {% if migas %}
+        <nav aria-label="Ruta de navegación">
+            <ol class="breadcrumb page-breadcrumb">
+                {% for etiqueta, url in migas %}
+                    {% if url %}
+                        <li class="breadcrumb-item"><a href="{{ url }}">{{ etiqueta }}</a></li>
+                    {% else %}
+                        <li class="breadcrumb-item active" aria-current="page">{{ etiqueta }}</li>
+                    {% endif %}
+                {% endfor %}
+            </ol>
+        </nav>
+        {% endif %}
+
+        <h1 class="page-title">
+            <span class="page-title-icon">{{ icono(icono_nombre) }}</span>
+            <span>{{ titulo }}</span>
+        </h1>
+
+        {% if descripcion %}
+            <p class="page-subtitle">{{ descripcion }}</p>
+        {% endif %}
+    </div>
+
+    {% if caller is defined %}
+        <div class="page-header-acciones">{{ caller() }}</div>
+    {% endif %}
+</header>
+{%- endmacro %}

@@ -12,13 +12,59 @@ El objetivo es agilizar el paso de **factura → inventario**:
 - **Imprimir etiquetas** con BarTender (`bartenderFiles/`) generando un CSV temporal `productos_temp.csv`.
 - **Gestionar catálogo maestro**: proveedores, ubicaciones, grupos, base de datos activa, configuraciones de correo, etc.
 
+## Interfaz y experiencia de usuario
+
+La interfaz se unificó con estilos compartidos en `static/assets/css/toyonissan.css` y encabezados reutilizables en `templates/includes/page_header.html`.
+
+- **Títulos consistentes**: todas las páginas muestran título, descripción breve, icono y breadcrumb (Inicio → módulo → página). Los iconos son SVG inline (`templates/includes/iconos.html`), sin librerías ni fuentes externas.
+- **Espaciado general**: `.content` agrega padding superior/inferior y laterales; las secciones se separan en tarjetas con márgenes propios.
+- **Diseño responsive**: contenedores fluidos y scroll horizontal (`.tabla-scroll`, `.table-responsive`) en listados amplios (facturas, inventario, grupos, configuración y tablas del detalle), evitando columnas comprimidas.
+- **Panel de control**: la página de inicio enlaza a Facturas, Inventario, Grupos, ION, Configuración y Procesar pendientes.
+
+### Detalle de factura
+
+- Se organizó en secciones: **Información de la factura**, **Acciones**, **Leyenda de estados**, **Artículos para inventariar** y **Procesar artículos pendientes**.
+- **Leyenda de estados** con badges compactos (icono + color + texto corto + tooltip):
+  - **Inventariado**: ya ingresó al inventario y no puede seleccionarse.
+  - **Permitido** (NO INVENTARIADO PERMITIDO): existe en consolidado y puede inventariarse.
+  - **No permitido** (NO INVENTARIADO NO PERMITIDO): debe procesarse primero en consolidado.
+- Los botones **Ver PDF** y **Procesar consolidado** quedan juntos en la barra de acciones.
+- Ambas tablas tienen scroll horizontal y cifras alineadas; las filas inventariadas se atenúan y no son interactivas.
+- **Consolidado con procesamiento selectivo**: solo se procesan las filas marcadas; el botón **Procesar seleccionados** se habilita con la selección y hay contador de seleccionados.
+- Se conserva **Seleccionar todos los pendientes**, el resaltado de filas seleccionadas y el clic sobre la fila para alternar el checkbox.
+- **Campos editables** de consolidado con nombres y ayudas claras:
+  - **Referencia proveedor** (ID del proveedor)
+  - **Descripción**
+  - **Referencia repuesto** (código interno)
+  - **Equivalente** (referencias alternas)
+  - **Marca artículo** (fabricante del repuesto)
+  - **Marca vehículo** (Toyota, Nissan…)
+  - **Modelo vehículo** (Hilux, Frontier…)
+  - **Lado** (izquierdo/derecho)
+  - **Medida**
+- La sección de consolidado se muestra/oculta en la misma página con el atributo `hidden`; no se abren pestañas nuevas ni se anidan formularios.
+- El total de la factura se muestra con formato monetario colombiano (`$ 11.405.736`).
+- **Visualización del PDF**: el botón *Ver PDF* abre el archivo en una pestaña nueva; si la factura no tiene PDF asociado, el botón aparece deshabilitado.
+
+### Lectura del total desde XML
+
+El total se extrae con el módulo reutilizable `facturas/xml_utils.py`:
+
+- Soporta XML UBL `Invoice` / `CreditNote` directos y `AttachedDocument` con la factura embebida en `cbc:Description`.
+- Compara etiquetas por **nombre local**, por lo que no depende de prefijos de namespace (`cac`, `cbc`, `a`, `fe`, etc.).
+- Prioridad: `LegalMonetaryTotal/PayableAmount`; respaldos: `TaxInclusiveAmount` y `LineExtensionAmount`.
+- `parsear_importe()` acepta enteros, decimales, separadores de miles/decimales colombianos o anglosajones, espacios y símbolos de moneda; usa `Decimal` para evitar pérdida de precisión.
+- Si el XML no contiene un total válido, se registra un diagnóstico, se guarda `NULL` (nunca `0` silencioso) y se informa en consola.
+- Los registros históricos con total `0`/`NULL` se reparan automáticamente desde `bin/xml/` al abrir la lista o el detalle (`reparar_totales_faltantes()` / `reparar_total_factura()`).
+- `formatear_moneda()` centraliza el formato `$ 1.234.567`.
+
 ## Arquitectura
 
 - **Framework**: Flask (blueprints)
 - **Base de datos**: SQLite (múltiples bases gestionadas desde `bdlocal/` con archivo `.bd_activa` que indica cuál está activa)
 - **Procesamiento de datos**: pandas para normalización/estandarización masiva
 - **Lectura de correo**: IMAP (Gmail) con `imaplib`, extracción de ZIP/XML/PDF
-- **XML**: `xml.etree.ElementTree` (soporta UBL con namespaces cac/cbc; también maneja `AttachedDocument`)
+- **XML**: `xml.etree.ElementTree` (UBL con namespaces dinámicos; `<Invoice>` directo y `<AttachedDocument>` con factura embebida) mediante `facturas/xml_utils.py`
 - **Etiquetado**: BarTender vía COM (`win32com.client`), generación de CSV
 - **Cifrado/normalización**: utilidades propias (`utilidades.py`) para normalizar claves y "cifrar" precios para impresión
 
@@ -50,7 +96,8 @@ toyonissanPopayan/
 │   └── estructura.sql    # Esquema inicial + proveedores base + config inicial
 ├── facturas/             # Blueprint de facturas (descarga IMAP, ver factura, inventariar)
 │   ├── __init__.py
-│   └── routes.py
+│   ├── routes.py
+│   └── xml_utils.py      # Lectura reutilizable de importes XML UBL + formato de moneda
 ├── grupos/               # Blueprint de grupos
 ├── inventario/           # Blueprint de inventario (listar, actualizar, imprimir)
 │   ├── __init__.py
@@ -58,8 +105,9 @@ toyonissanPopayan/
 ├── ion/                  # Blueprint ion
 ├── procesamiento/
 │   └── consolidado.py    # Lógica de estandarización (leer diccionarios, extraer repuesto/marca/lado/modelo/medida, armar descripcionEstandarizada)
-├── static/               # CSS/JS/imagenes
+├── static/               # CSS/JS/imagenes (assets/css/toyonissan.css = estilos compartidos)
 ├── templates/            # Plantillas HTML (configuracion, facturas, inventario, etc.)
+├── tests/                # Pruebas unitarias (lectura de importes XML UBL)
 └── users.py
 ```
 
@@ -78,7 +126,7 @@ Ruta: `/facturas/` (POST)
 3. Busca correos con `SINCE/BEFORE` y por `SUBJECT` con el NIT de cada proveedor (tabla `proveedor`).
 4. Extrae archivos `.zip` adjuntos, guarda en `bin/`.
 5. Extrae `.xml` a `bin/xml/` y `.pdf` a `bin/pdf/`.
-6. Parsea XML (UBL): obtiene proveedor, fecha (`IssueDate`), valor total (`LegalMonetaryTotal/PayableAmount`), líneas (`InvoiceLine`). Soporta `AttachedDocument` donde el XML viene en `cbc:Description`.
+6. Parsea XML (UBL): obtiene proveedor, fecha (`IssueDate`), valor total (`LegalMonetaryTotal/PayableAmount` con respaldos `TaxInclusiveAmount`/`LineExtensionAmount`) y líneas (`InvoiceLine`). Soporta `AttachedDocument` donde el XML viene en `cbc:Description`. Ver `facturas/xml_utils.py`.
 7. Guarda factura en `facturas` (evita duplicados por `id_factura`). Guarda líneas en `inventarioFacturas` con `ON CONFLICT(id_factura, referencia, descripcion_item) DO UPDATE`.
 8. Muestra lista de facturas con conteo de artículos sin procesar.
 
@@ -107,6 +155,7 @@ Hay dos caminos:
 - `app.actualizar_consolidado()` sincroniza con tabla `consolidado` por clave `(abrevProveedor, referenciaProveedor)`: inserta nuevos, actualiza si hay cambios en campos monitoreados, cuenta totales.
 
 **B) Desde `/configuracion/procesar-pendientes` (procesar líneas de factura hacia consolidado)**
+- El mismo flujo está disponible en el detalle de factura, donde solo se procesan las filas seleccionadas.
 - Busca factura por `id_factura`, carga líneas desde `inventarioFacturas`
 - Construye DataFrame con datos editados (referenciaProveedor, referenciaRepuesto, equivalente, descripcion, marca, carro, precioListado)
 - `procesamiento.consolidado.procesar_dataframe_pendientes()` aplica misma estandarización (sin agrupado masivo)

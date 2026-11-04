@@ -1,19 +1,28 @@
 {% extends "layouts/base.html" %}
-{% block title %}Configuración Grupos{% endblock %}
+
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
+{% block title %}Configuración de Grupos{% endblock %}
 
 {% block content %}
-<h1>Configuración de Grupos</h1>
-<p>Bienvenido, {{ usuario }}. Aquí puedes gestionar los grupos.</p>
+{{ encabezado_pagina(
+    'Configuración de grupos',
+    'Administra los grupos de artículos, sus variantes, tipos y abreviaciones.',
+    'grupo',
+    [('Inicio', url_for('index')), ('Grupos', None)]
+) }}
 
 <div class="card card-body border-0 shadow mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="h5 mb-0 d-flex align-items-center gap-2">{{ icono('grupo') }} Grupos registrados</h2>
+        <button class="btn btn-primary" onclick="abrirModal()">
+            {{ icono('etiqueta') }} Crear nuevo grupo
+        </button>
+    </div>
 
-
-    <button class="btn btn-primary mb-3" onclick="abrirModal()">
-        ➕ Crear nuevo grupo
-    </button>
-
-    <div class=" border-0 shadow table-wrapper table-responsive">
-        <table class="table table-bordered table-striped">
+    <div class="tabla-scroll">
+        <table class="table table-bordered table-striped tabla-grupos">
             <thead>
                 <tr>
                     <th>Grupo</th>
@@ -39,10 +48,22 @@
         <div class="modal-content">
             <h4>Nuevo Grupo</h4>
 
-            <input type="text" id="grupo" placeholder="Grupo">
-            <input type="text" id="variante" placeholder="Variante">
-            <input type="text" id="tipo" placeholder="Tipo (opcional)">
-            <input type="text" id="abreviacion" placeholder="Abreviación">
+            <div class="mb-2">
+                <label for="grupo" class="form-label">Grupo</label>
+                <input type="text" id="grupo" class="form-control" placeholder="Ej. Frenos">
+            </div>
+            <div class="mb-2">
+                <label for="variante" class="form-label">Variante</label>
+                <input type="text" id="variante" class="form-control" placeholder="Ej. Delantero">
+            </div>
+            <div class="mb-2">
+                <label for="tipo" class="form-label">Tipo (opcional)</label>
+                <input type="text" id="tipo" class="form-control" placeholder="Ej. Repuesto">
+            </div>
+            <div class="mb-2">
+                <label for="abreviacion" class="form-label">Abreviación</label>
+                <input type="text" id="abreviacion" class="form-control" placeholder="Ej. FREN">
+            </div>
 
             <div class="mt-3">
                 <button class="btn btn-success" onclick="guardarGrupo()">Guardar</button>

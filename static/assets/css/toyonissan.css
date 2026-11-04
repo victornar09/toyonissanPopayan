@@ -1,0 +1,325 @@
+/* ==========================================================================
+   Toyonissan Popayán — estilos compartidos
+   Centraliza encabezados de página, espaciados y tablas responsive.
+   ========================================================================== */
+
+:root {
+    --tn-border: #e5e7eb;
+    --tn-muted: #6b7280;
+    --tn-primary: #1d4ed8;
+    --tn-primary-soft: #e7f1ff;
+}
+
+/* --------------------------------------------------------------------------
+   Espaciado general de las páginas
+   -------------------------------------------------------------------------- */
+.content {
+    padding: 1.5rem clamp(1rem, 2vw, 2rem) 2.5rem;
+}
+
+.pagina-detalle {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 1.5rem clamp(1rem, 2vw, 2rem) 2.5rem;
+}
+
+.content > .container-fluid {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+@media (max-width: 575.98px) {
+    .content,
+    .pagina-detalle {
+        padding: 1rem 0.85rem 2rem;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Encabezado de página (templates/includes/page_header.html)
+   -------------------------------------------------------------------------- */
+.page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--tn-border);
+}
+
+.page-header-texto {
+    min-width: 0;
+}
+
+.page-breadcrumb {
+    margin: 0 0 0.45rem;
+    font-size: 0.78rem;
+    --bs-breadcrumb-divider: "/";
+}
+
+.page-breadcrumb .breadcrumb-item a {
+    color: var(--tn-muted);
+    text-decoration: none;
+}
+
+.page-breadcrumb .breadcrumb-item a:hover {
+    color: var(--tn-primary);
+    text-decoration: underline;
+}
+
+.page-breadcrumb .breadcrumb-item.active {
+    color: #495057;
+}
+
+.page-title {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0;
+    font-size: clamp(1.35rem, 2vw, 1.7rem);
+    font-weight: 700;
+    line-height: 1.2;
+    color: #1f2937;
+}
+
+.page-title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.55rem;
+    height: 2.55rem;
+    border-radius: 0.8rem;
+    background: linear-gradient(135deg, #e7f1ff, #dbeafe);
+    color: var(--tn-primary);
+}
+
+.page-title-icon .icono {
+    width: 1.4rem;
+    height: 1.4rem;
+}
+
+.page-subtitle {
+    margin: 0.4rem 0 0;
+    font-size: 0.92rem;
+    color: var(--tn-muted);
+}
+
+.page-header-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* --------------------------------------------------------------------------
+   Iconos SVG inline
+   -------------------------------------------------------------------------- */
+.icono {
+    display: inline-block;
+    width: 1.15em;
+    height: 1.15em;
+    vertical-align: -0.18em;
+}
+
+/* --------------------------------------------------------------------------
+   Tablas amplias con scroll horizontal
+   -------------------------------------------------------------------------- */
+.tabla-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tabla-scroll > .table {
+    margin-bottom: 0;
+}
+
+.table-responsive {
+    -webkit-overflow-scrolling: touch;
+}
+
+.table > :not(caption) > * > * {
+    vertical-align: middle;
+}
+
+.celda-numero {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.celda-check {
+    width: 42px;
+    text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Secciones y tarjetas del detalle de factura
+   -------------------------------------------------------------------------- */
+.seccion-titulo {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.dato-etiqueta {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--tn-muted);
+}
+
+.dato-valor {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.dato-total {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #157347;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Leyenda de estados */
+.leyenda-estado {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    min-width: 240px;
+    flex: 1 1 240px;
+}
+
+.leyenda-estado .badge {
+    flex: 0 0 auto;
+}
+
+.leyenda-estado p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--tn-muted);
+}
+
+/* Badges compactos */
+.badge-estado {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.35em 0.55em;
+    white-space: nowrap;
+}
+
+.badge-estado .icono {
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
+/* Tablas del detalle */
+.tabla-inventario {
+    min-width: 940px;
+}
+
+.tabla-pendientes {
+    min-width: 1240px;
+}
+
+.tabla-inventario th,
+.tabla-pendientes th {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.tabla-pendientes th .pista {
+    display: block;
+    font-size: 0.66rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #adb5bd;
+    font-weight: 400;
+}
+
+.celda-estado {
+    width: 132px;
+}
+
+.col-referencia { min-width: 130px; }
+.col-descripcion { min-width: 240px; }
+.col-dinero { min-width: 128px; }
+.col-cantidad { min-width: 84px; }
+
+.tabla-pendientes .form-control {
+    min-width: 100px;
+    font-size: 0.85rem;
+}
+
+.tabla-pendientes textarea.form-control {
+    min-width: 240px;
+    resize: vertical;
+}
+
+.ancho-corto { max-width: 96px; }
+
+/* Filas */
+.item-inventariado {
+    background-color: #f1f3f5 !important;
+    color: #868e96 !important;
+    opacity: 0.85;
+}
+
+.item-inventariado input {
+    background-color: #f1f3f5 !important;
+    color: #868e96 !important;
+}
+
+.fila-seleccionada,
+.fila-seleccionada > td {
+    background-color: var(--tn-primary-soft) !important;
+}
+
+/* Barra de acciones */
+.barra-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+@media (max-width: 575.98px) {
+    .dato-total { font-size: 1.15rem; }
+    .page-header { align-items: flex-start; }
+    .page-header-acciones { width: 100%; }
+}
+
+/* --------------------------------------------------------------------------
+   Listados generales
+   -------------------------------------------------------------------------- */
+.tabla-facturas { min-width: 860px; }
+.tabla-inventario-listado { min-width: 980px; }
+.tabla-grupos { min-width: 620px; }
+.tabla-config { min-width: 760px; }
+
+.tarjeta-acceso {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tarjeta-acceso:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1.25rem rgba(17, 24, 39, 0.12) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tarjeta-acceso {
+        transition: none;
+    }
+    .tarjeta-acceso:hover {
+        transform: none;
+    }
+}
+

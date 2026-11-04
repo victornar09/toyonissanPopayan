@@ -13,6 +13,11 @@ import pandas as pd
 import db
 from utilidades import cifrar_precio, a_entero, normalizar_clave
 from facturas.validacion_consolidado import obtener_estados_factura, obtener_estado_linea, resolver_proveedor
+from facturas.xml_utils import (
+    extraer_total_xml,
+    extraer_total_desde_elemento,
+    obtener_invoice_root,
+)
 from procesamiento.consolidado import procesar_dataframe_pendientes
 
 
@@ -64,6 +69,103 @@ def imprimir_varios(productos, ruta_template, columna_inicio=1):
 
 
 facturas_bp = Blueprint('facturas', __name__, url_prefix='/facturas')
+
+
+def _ruta_xml_factura(id_factura):
+    """Ubica el XML original de una factura dentro de bin/xml."""
+
+    base = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "bin",
+        "xml",
+    )
+
+    candidatos = [
+        os.path.join(base, f"{id_factura}.xml"),
+        os.path.join(base, f"{id_factura}.XML"),
+    ]
+
+    for candidato in candidatos:
+        if os.path.isfile(candidato):
+            return candidato
+
+    try:
+        for nombre in os.listdir(base):
+            if (
+                nombre.lower().endswith(".xml")
+                and os.path.splitext(nombre)[0] == str(id_factura)
+            ):
+                return os.path.join(base, nombre)
+    except OSError:
+        pass
+
+    return None
+
+
+def reparar_total_factura(conn, id_factura):
+    """Recalcula el total de una factura desde su XML original.
+
+    Devuelve el total (float) o ``None`` si no fue posible obtenerlo.
+    """
+
+    ruta_xml = _ruta_xml_factura(id_factura)
+
+    if not ruta_xml:
+        print(f"[facturas] No se encontró el XML original de {id_factura}.")
+        return None
+
+    try:
+        with open(ruta_xml, "rb") as archivo:
+            contenido = archivo.read()
+    except OSError as error:
+        print(f"[facturas] No se pudo leer {ruta_xml}: {error}")
+        return None
+
+    resultado = extraer_total_xml(contenido)
+    total = resultado.get("total")
+
+    if total is None:
+        print(
+            "[facturas] Total no válido en "
+            f"{os.path.basename(ruta_xml)}: {resultado.get('advertencias')}"
+        )
+        return None
+
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE facturas SET valor_total = ? WHERE id_factura = ?",
+        (float(total), id_factura),
+    )
+    return float(total)
+
+
+def reparar_totales_faltantes(conn, limite=500):
+    """Recalcula los totales guardados en NULL/0 usando los XML originales."""
+
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id_factura
+        FROM facturas
+        WHERE valor_total IS NULL OR valor_total = 0
+        ORDER BY fecha DESC
+        LIMIT ?
+        """,
+        (limite,),
+    )
+    pendientes = [fila[0] for fila in cursor.fetchall() if fila[0]]
+
+    corregidas = 0
+
+    for id_factura in pendientes:
+        if reparar_total_factura(conn, id_factura) is not None:
+            corregidas += 1
+
+    if corregidas:
+        print(f"[facturas] Totales reparados: {corregidas}")
+
+    return corregidas
+
 
 @facturas_bp.route('/', methods=['GET', 'POST'])
 def facturas():
@@ -228,25 +330,12 @@ def facturas():
                                         'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2'
                                     }
 
-                                    if root.tag.endswith("AttachedDocument"):
+                                    # Misma lógica reutilizable que usa el lector
+                                    # de importes: soporta <Invoice> directo y
+                                    # <AttachedDocument> con la factura embebida.
+                                    invoice_root = obtener_invoice_root(root)
 
-                                        description_el = root.find(
-                                            './/cbc:Description',
-                                            ns
-                                        )
-
-                                        if description_el is None or not description_el.text:
-                                            continue
-
-                                        invoice_root = ET.fromstring(
-                                            description_el.text
-                                        )
-
-                                    elif root.tag.endswith("Invoice"):
-
-                                        invoice_root = root
-
-                                    else:
+                                    if invoice_root is None:
                                         continue
 
                                     proveedor_el = invoice_root.find(
@@ -271,16 +360,29 @@ def facturas():
                                         else ""
                                     )
 
-                                    valor_total_el = invoice_root.find(
-                                        ".//cbc:LegalMonetaryTotal/cbc:PayableAmount",
-                                        ns
+                                    # Total: lectura reutilizable y tolerante a
+                                    # namespaces/formatos (Decimal, no float directo).
+                                    resultado_total = extraer_total_desde_elemento(
+                                        invoice_root
                                     )
-
+                                    total_decimal = resultado_total.get("total")
                                     valor_total = (
-                                        float(valor_total_el.text)
-                                        if valor_total_el is not None
-                                        else 0
+                                        float(total_decimal)
+                                        if total_decimal is not None
+                                        else None
                                     )
+                                    if valor_total is None:
+                                        print(
+                                            "[facturas] Sin total válido en "
+                                            f"{nombre_archivo}: "
+                                            f"{resultado_total.get('advertencias')}"
+                                        )
+                                    elif resultado_total.get("advertencias"):
+                                        print(
+                                            "[facturas] Total con advertencias en "
+                                            f"{nombre_archivo}: "
+                                            f"{resultado_total.get('advertencias')}"
+                                        )
 
                                     items_fragment = invoice_root.findall(
                                         ".//cac:InvoiceLine",
@@ -470,6 +572,12 @@ def facturas():
     if ruta_db:
         conn = db.conectar(ruta_db)
         cursor = conn.cursor()
+        try:
+            reparar_totales_faltantes(conn)
+            conn.commit()
+        except Exception as error:
+            print(f"[facturas] No se pudieron reparar totales: {error}")
+            conn.rollback()
         cursor.execute("""
             SELECT 
                 f.id_factura,
@@ -531,43 +639,93 @@ def ver_factura(id_factura):
                         flash("No se encontró la factura.", "danger")
                         return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
 
+                    seleccionados_idx = request.form.getlist("seleccionados_consolidado[]")
                     referencias_proveedor = request.form.getlist("referenciaProveedor[]")
                     referencias_repuesto = request.form.getlist("referenciaRepuesto[]")
                     equivalentes = request.form.getlist("equivalente[]")
                     descripciones = request.form.getlist("descripcion[]")
                     marcas = request.form.getlist("marcaRepuesto[]")
                     carros = request.form.getlist("carro[]")
+                    lados = request.form.getlist("lado[]")
+                    modelos = request.form.getlist("modelo[]")
+                    medidas = request.form.getlist("medida[]")
                     precioListado = request.form.getlist("precioListado[]")
+                    ids_inv_factura = request.form.getlist("idInventarioFactura[]")
 
+                    seleccionados_set = set()
+                    for s in seleccionados_idx:
+                        try:
+                            seleccionados_set.add(int(s))
+                        except Exception:
+                            pass
+
+                    creados = 0
+                    omitidos = 0
+                    errores = 0
                     articulos_df = []
-                    total = len(referencias_proveedor)
-                    for i in range(total):
+                    for i in range(len(referencias_proveedor)):
+                        if i not in seleccionados_set:
+                            continue
+                        ref_p = (referencias_proveedor[i] or '').strip()
+                        if not ref_p:
+                            errores += 1
+                            continue
+                        # Validar backend: línea pertenece a factura actual
+                        inv_line_id = None
+                        if i < len(ids_inv_factura):
+                            try:
+                                inv_line_id = int(ids_inv_factura[i])
+                            except Exception:
+                                inv_line_id = None
+                        if inv_line_id is not None:
+                            cursor.execute("SELECT id FROM inventarioFacturas WHERE id = ? AND id_factura = ?", (inv_line_id, id_factura))
+                            if not cursor.fetchone():
+                                errores += 1
+                                continue
+                        # Validar backend: no duplicar en consolidado
+                        if factura[5]:
+                            try:
+                                cursor.execute("SELECT 1 FROM consolidado WHERE UPPER(TRIM(abrevProveedor)) = ? AND UPPER(TRIM(referenciaProveedor)) = ?", (str(factura[5]).upper().strip(), ref_p.upper()))
+                                if cursor.fetchone():
+                                    omitidos += 1
+                                    continue
+                            except Exception:
+                                pass
+                        desc = (descripciones[i] if i < len(descripciones) else '') or ''
+                        if not desc.strip():
+                            errores += 1
+                            continue
                         articulos_df.append({
-                            "referenciaProveedor": (referencias_proveedor[i] or '').strip(),
-                            "referenciaRepuesto": (referencias_repuesto[i] or '').strip(),
-                            "equivalente": (equivalentes[i] or '').strip(),
-                            "descripcion": (descripciones[i] or '').strip(),
-                            "marca": (marcas[i] or '').strip(),
-                            "carro": (carros[i] or '').strip(),
+                            "referenciaProveedor": ref_p,
+                            "referenciaRepuesto": (referencias_repuesto[i] if i < len(referencias_repuesto) else '') or '',
+                            "equivalente": (equivalentes[i] if i < len(equivalentes) else '') or '',
+                            "descripcion": desc.strip(),
+                            "marca": (marcas[i] if i < len(marcas) else '') or '',
+                            "carro": (carros[i] if i < len(carros) else '') or '',
                             "tipo": "",
                             "tipoMotor": "",
-                            "precioListado": (precioListado[i] or '').strip(),
+                            "precioListado": (precioListado[i] if i < len(precioListado) else '') or '',
                             "proveedor": factura[2],
                             "idProveedor": factura[1],
                             "abrevProveedor": factura[5]
                         })
+                    if not articulos_df:
+                        flash(f"Procesados: creados {creados}, omitidos {omitidos}, errores {errores}", "warning")
+                        return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
                     df = pd.DataFrame(articulos_df)
                     df = procesar_dataframe_pendientes(df, ruta_estandarizacion)
                     from app import actualizar_consolidado
                     resultado = actualizar_consolidado(conn, df)
+                    creados_res = resultado.get('nuevos', 0)
+                    mod_res = resultado.get('modificados', 0)
                     flash(
-                        f"Artículos procesados correctamente. Nuevos: {resultado['nuevos']} | Modificados: {resultado['modificados']} | Sin cambios: {resultado['sin_cambios']}",
+                        f"Procesados: creados {creados_res}, modificados {mod_res}, omitidos {omitidos}, errores {errores}",
                         "success"
                     )
-                    return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
+                    return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
             except Exception as e:
                 flash(f"Error procesando artículos a consolidado: {e}", "danger")
-                return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
+                return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
 
         seleccionados = request.form.getlist('seleccionados')
         template_id = request.form.get("template_id")
@@ -779,6 +937,12 @@ def ver_factura(id_factura):
 
         cursor = conn.cursor()
 
+        # Reparar totales históricos guardados en 0/NULL (una sola pasada).
+        try:
+            reparar_totales_faltantes(conn)
+        except Exception as error:
+            print(f"[facturas] No se pudieron reparar totales: {error}")
+
         cursor.execute("""
             SELECT idBartenderFiles, name
             FROM bartenderFiles
@@ -793,6 +957,18 @@ def ver_factura(id_factura):
             WHERE id_factura = ?
         """, (id_factura,))
         factura = cursor.fetchone()
+
+        # Si el total sigue vacío, intentar una reparación puntual.
+        if factura and not factura[2]:
+            total_reparado = reparar_total_factura(conn, id_factura)
+            if total_reparado is not None:
+                factura = (
+                    factura[0],
+                    factura[1],
+                    total_reparado,
+                    factura[3],
+                    factura[4],
+                )
 
         cursor.execute("""
             SELECT fac.id_factura, prov.idProveedor, fac.proveedor, fac.fecha, fac.valor_total, prov.siglas
@@ -809,18 +985,39 @@ def ver_factura(id_factura):
         """, (id_factura,))
         factura_items = cursor.fetchall()
 
+        prov_info_get = None
+        if factura and factura[0]:
+            try:
+                prov_info_get = resolver_proveedor(conn, factura[0])
+            except Exception:
+                prov_info_get = None
+        siglas_get = prov_info_get.get('siglas') if prov_info_get else (factura_consolidado[5] if factura_consolidado and len(factura_consolidado) > 5 else None)
+
         articulos_pendientes = []
         for fila in factura_items:
+            ref_p = fila[1] or ""
+            ya_consolidado = False
+            if siglas_get and ref_p:
+                try:
+                    cursor.execute("SELECT 1 FROM consolidado WHERE UPPER(TRIM(abrevProveedor)) = ? AND UPPER(TRIM(referenciaProveedor)) = ?", (str(siglas_get).upper().strip(), str(ref_p).upper().strip()))
+                    if cursor.fetchone():
+                        ya_consolidado = True
+                except Exception:
+                    ya_consolidado = False
             articulos_pendientes.append({
                 "idInventarioFactura": fila[0],
                 "id_factura": id_factura,
-                "referenciaProveedor": fila[1] or "",
+                "referenciaProveedor": ref_p,
                 "referenciaRepuesto": "",
                 "equivalente": "",
                 "descripcion": fila[2] or "",
                 "marcaRepuesto": "",
                 "carro": "",
-                "precioListado": fila[4]
+                "lado": "",
+                "modelo": "",
+                "medida": "",
+                "precioListado": fila[4],
+                "ya_consolidado": ya_consolidado
             })
 
         estados = {}
@@ -828,6 +1025,8 @@ def ver_factura(id_factura):
             estados = obtener_estados_factura(conn, id_factura)
         except Exception:
             estados = {}
+
+        mostrar_consolidado = request.args.get('procesar') == '1' or request.args.get('consolidar') == '1'
 
     return render_template(
         'facturas/detalle.html',
@@ -837,7 +1036,8 @@ def ver_factura(id_factura):
         bartender_templates=bartender_templates,
         estados_linea=estados,
         factura_consolidado=factura_consolidado,
-        articulos_pendientes=articulos_pendientes
+        articulos_pendientes=articulos_pendientes,
+        mostrar_consolidado=mostrar_consolidado
     )
 
 @facturas_bp.route('/pdf/<filename>')

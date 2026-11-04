@@ -1,58 +1,70 @@
 {% extends "layouts/base.html" %}
 
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
 {% block title %}Facturas{% endblock %}
 
 <!-- Specific Page CSS goes HERE  -->
 {% block stylesheets %}{% endblock stylesheets %}
 
 {% block content %}
-    <h1>Sección Facturas</h1>
-    <p>Bienvenido, {{ usuario }}. Aquí puedes gestionar tus facturas.</p>
-    
-    
+    {{ encabezado_pagina(
+        'Gestion de facturas',
+        'Descarga las facturas del correo, filtra por proveedor o estado y abre el detalle de cada una.',
+        'facturas',
+        [('Inicio', url_for('index')), ('Facturas', None)]
+    ) }}
+
     <div class="card card-body border-0 shadow mb-4">
-        <h2 class="h5 mb-4">Descargar Facturas del Correo</h2>
+        <h2 class="h5 mb-3 d-flex align-items-center gap-2">
+            {{ icono('pdf') }} Descargar facturas del correo
+        </h2>
+        <p class="text-muted small mb-3">Selecciona el rango de fechas para buscar los archivos adjuntos.</p>
         <form method="post">
-            <div class="row g-2 align-items-end">
+            <div class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label for="fecha_desde" class="form-label">Fecha desde:</label>
+                    <label for="fecha_desde" class="form-label">Fecha desde</label>
                     <input type="date" id="fecha_desde" name="fecha_desde" value="{{ fecha_desde }}" class="form-control">
                 </div>
                 <div class="col-md-4">
-                    <label for="fecha_hasta" class="form-label">Fecha hasta:</label>
+                    <label for="fecha_hasta" class="form-label">Fecha hasta</label>
                     <input type="date" id="fecha_hasta" name="fecha_hasta" value="{{ fecha_hasta }}" class="form-control">
                 </div>
                 <div class="col-md-4">
-                    <button type="submit" class="btn btn-secondary w-100">Descargar Facturas</button>
+                    <button type="submit" class="btn btn-secondary w-100">
+                        {{ icono('pdf') }} Descargar facturas
+                    </button>
                 </div>
             </div>
         </form>
     </div>
 
-    
-    
-
     {% if mensaje %}
-        <p>{{ mensaje }}</p>
+        <div class="alert alert-info">{{ mensaje }}</div>
     {% endif %}
-    <!-- Filtros de búsqueda -->
-    <div class="mb-3">
+
+    <!-- Filtros de busqueda -->
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-3 d-flex align-items-center gap-2">
+            {{ icono('buscar') }} Buscar y filtrar
+        </h2>
         <div class="row g-2">
             <div class="col-md-2">
-                <input type="text" id="filtroIdFactura" placeholder="ID Factura" class="form-control">
+                <input type="text" id="filtroIdFactura" placeholder="ID factura" class="form-control">
             </div>
             <div class="col-md-2">
                 <input type="text" id="filtroProveedor" placeholder="Proveedor" class="form-control">
             </div>
             <div class="col-md-2">
-                <input type="date" id="filtroFechaDesde" placeholder="Desde" class="form-control">
+                <input type="date" id="filtroFechaDesde" placeholder="Desde" class="form-control" title="Fecha desde">
             </div>
             <div class="col-md-2">
-                <input type="date" id="filtroFechaHasta" placeholder="Hasta" class="form-control">
+                <input type="date" id="filtroFechaHasta" placeholder="Hasta" class="form-control" title="Fecha hasta">
             </div>
             <div class="col-md-2">
                 <select id="filtroEstado" class="form-select">
-                    <option value="">Todos</option>
+                    <option value="">Todos los estados</option>
                     <option value="procesada">Procesada</option>
                     <option value="sin procesar">Sin procesar</option>
                 </select>
@@ -65,8 +77,9 @@
             </div>
         </div>
     </div>
-    <div class="card card-body border-0 shadow table-wrapper table-responsive">
-      <table class="table table-hover">
+
+    <div class="card border-0 shadow tabla-scroll">
+      <table class="table table-hover tabla-facturas">
           <thead>
               <tr>
                   <th class="border-gray-200"># id_factura</th>
@@ -84,12 +97,12 @@
                     <td>
                         <a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" class="fw-bold">{{ id_factura }}</a>
                         <button class="btn btn-sm btn-link p-0 ms-1" type="button" onclick="copiarIdFactura('{{ id_factura }}')" title="Copiar ID factura">
-                            <i class="bi bi-clipboard"></i>
+                            {{ icono('clipboard') }}
                         </button>
                     </td>
                     <td><span class="fw-normal">{{ proveedor }}</span></td>
                     <td><span class="fw-normal">{{ fecha }}</span></td>
-                    <td><span class="fw-bold">$ {{ valor_total }}</span></td>
+                    <td><span class="fw-bold">$ {{ "{:,.0f}".format(valor_total or 0).replace(",", ".") }}</span></td>
                     <td>
                         {% if articulos_sin_procesar == 0 %}
                             <span class="badge bg-success">Procesada</span>
@@ -102,7 +115,6 @@
                     <td>
                         <a href="{{ url_for('facturas.ver_pdf', filename=pdf_filename) }}" target="_blank" class="btn btn-primary">Ver PDF</a>
                         <a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" target="_blank" class="btn btn-secondary">Ver Detalle</a>
-                        <a href="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}#procesar-consolidado" class="btn btn-success">Procesar a consolidado</a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -199,17 +211,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const estadoFiltro = document.getElementById('filtroEstado').value.toLowerCase();
 
         filasVisibles = todasFilas.filter(fila => {
-            const id = fila.querySelector('td a.fw-bold')?.textContent.toLowerCase() || '';
-            const spans = fila.querySelectorAll('td span.fw-normal');
-            const proveedor = spans[0]?.textContent.toLowerCase() || '';
-            const fecha = spans[1]?.textContent.trim() || '';
-            const estado = spans[2]?.textContent.toLowerCase() || '';
+            const celdas = fila.children;
+            const id = celdas[0]?.querySelector('a')?.textContent.toLowerCase() || '';
+            const proveedor = celdas[1]?.textContent.toLowerCase() || '';
+            const fecha = celdas[2]?.textContent.trim() || '';
+            const estado = celdas[4]?.textContent.toLowerCase() || '';
 
             if (idFiltro && !id.includes(idFiltro)) return false;
             if (proveedorFiltro && !proveedor.includes(proveedorFiltro)) return false;
             if (fechaDesde && fecha < fechaDesde) return false;
             if (fechaHasta && fecha > fechaHasta) return false;
-            if (estadoFiltro && estado !== estadoFiltro) return false;
+            if (estadoFiltro && !estado.includes(estadoFiltro)) return false;
 
             return true;
         });

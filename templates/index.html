@@ -1,20 +1,89 @@
-
 {% extends "layouts/base.html" %}
 
-{% block title %} Inicio {% endblock %} 
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
 
-<!-- Specific Page CSS goes HERE  -->
-{% block stylesheets %}{% endblock stylesheets %}
+{% block title %}Inicio{% endblock %}
 
 {% block content %}
+    {{ encabezado_pagina(
+        'Panel de control',
+        'Bienvenido' ~ (', ' ~ usuario if usuario else '') ~ '. Accede rápidamente a los módulos del sistema.',
+        'inicio',
+        [('Inicio', None)]
+    ) }}
 
+    <div class="row g-4">
+        <div class="col-12 col-sm-6 col-xl-4">
+            <a href="{{ url_for('facturas.facturas') }}" class="card border-0 shadow-sm h-100 text-decoration-none tarjeta-acceso">
+                <div class="card-body d-flex align-items-start gap-3">
+                    <span class="page-title-icon">{{ icono('facturas') }}</span>
+                    <div>
+                        <h2 class="h5 mb-1 text-dark">Facturas</h2>
+                        <p class="text-muted small mb-0">Descarga, consulta y procesa las facturas electrónicas.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
 
-    
-    
-    
+        <div class="col-12 col-sm-6 col-xl-4">
+            <a href="{{ url_for('inventario.inventario_home') }}" class="card border-0 shadow-sm h-100 text-decoration-none tarjeta-acceso">
+                <div class="card-body d-flex align-items-start gap-3">
+                    <span class="page-title-icon">{{ icono('inventario') }}</span>
+                    <div>
+                        <h2 class="h5 mb-1 text-dark">Inventario</h2>
+                        <p class="text-muted small mb-0">Consulta existencias, precios y etiquetas del inventario.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
 
+        <div class="col-12 col-sm-6 col-xl-4">
+            <a href="{{ url_for('grupos.grupo_home') }}" class="card border-0 shadow-sm h-100 text-decoration-none tarjeta-acceso">
+                <div class="card-body d-flex align-items-start gap-3">
+                    <span class="page-title-icon">{{ icono('grupo') }}</span>
+                    <div>
+                        <h2 class="h5 mb-1 text-dark">Grupos</h2>
+                        <p class="text-muted small mb-0">Administra grupos, variantes y abreviaciones.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
 
+        <div class="col-12 col-sm-6 col-xl-4">
+            <a href="{{ url_for('ion.ion_home') }}" class="card border-0 shadow-sm h-100 text-decoration-none tarjeta-acceso">
+                <div class="card-body d-flex align-items-start gap-3">
+                    <span class="page-title-icon">{{ icono('ion') }}</span>
+                    <div>
+                        <h2 class="h5 mb-1 text-dark">ION</h2>
+                        <p class="text-muted small mb-0">Módulo de integración y servicios ION.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-12 col-sm-6 col-xl-4">
+            <a href="{{ url_for('configuracion') }}" class="card border-0 shadow-sm h-100 text-decoration-none tarjeta-acceso">
+                <div class="card-body d-flex align-items-start gap-3">
+                    <span class="page-title-icon">{{ icono('configuracion') }}</span>
+                    <div>
+                        <h2 class="h5 mb-1 text-dark">Configuración</h2>
+                        <p class="text-muted small mb-0">Bases de datos, proveedores, plantillas y ubicaciones.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-12 col-sm-6 col-xl-4">
+            <a href="{{ url_for('procesar_pendientes') }}" class="card border-0 shadow-sm h-100 text-decoration-none tarjeta-acceso">
+                <div class="card-body d-flex align-items-start gap-3">
+                    <span class="page-title-icon">{{ icono('pendientes') }}</span>
+                    <div>
+                        <h2 class="h5 mb-1 text-dark">Procesar pendientes</h2>
+                        <p class="text-muted small mb-0">Envía artículos de una factura al consolidado.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
 {% endblock content %}
-
-<!-- Specific Page JS goes HERE  -->
-{% block javascripts %}{% endblock javascripts %}
