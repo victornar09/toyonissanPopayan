@@ -323,3 +323,236 @@
     }
 }
 
+/* ==========================================================================
+   Inventario
+   ========================================================================== */
+
+.page-header-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+/* Tarjetas explicativas de inventario teórico / físico */
+.info-tile {
+    border-left: 4px solid transparent;
+}
+
+.info-tile-teorico {
+    border-left-color: #2563eb;
+}
+
+.info-tile-fisico {
+    border-left-color: #15803d;
+}
+
+.info-tile-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    background: #eef4ff;
+    color: #2563eb;
+}
+
+.info-tile-fisico .info-tile-icon {
+    background: #eaf7ee;
+    color: #15803d;
+}
+
+.info-tile-icon .icono {
+    width: 1.35rem;
+    height: 1.35rem;
+}
+
+.badge-teorico {
+    background-color: #e0ecff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    font-weight: 600;
+}
+
+.badge-fisico {
+    background-color: #e3f6e8;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+    font-weight: 600;
+}
+
+.badge-teorico .icono,
+.badge-fisico .icono {
+    width: 0.85rem;
+    height: 0.85rem;
+}
+
+/* Panel de filtros */
+.filtro-grupo {
+    border: 0;
+    padding: 0;
+    margin: 0 0 1rem;
+}
+
+.filtro-grupo + .filtro-grupo {
+    border-top: 1px dashed var(--tn-border);
+    padding-top: 1rem;
+}
+
+.filtro-grupo legend {
+    float: none;
+    width: auto;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tn-muted);
+    margin-bottom: 0.65rem;
+}
+
+.filtro-grupo .form-label {
+    font-size: 0.8rem;
+    margin-bottom: 0.3rem;
+}
+
+.filtro-grupo .form-control,
+.filtro-grupo .form-select {
+    font-size: 0.875rem;
+}
+
+/* Tabla amplia con columnas fijas */
+.tabla-inventario-pro {
+    --inv-codigo-w: 155px;
+    --inv-desc-w: 270px;
+    --inv-acciones-w: 145px;
+    min-width: 2280px;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.tabla-inventario-pro th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    vertical-align: bottom;
+    background-color: #f8f9fa;
+}
+
+.tabla-inventario-pro td {
+    white-space: nowrap;
+    vertical-align: middle;
+    font-size: 0.86rem;
+}
+
+.tabla-inventario-pro tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+/* Anchos por contenido */
+.tabla-inventario-pro .col-inv-referencia { min-width: 130px; }
+.tabla-inventario-pro .col-inv-media { min-width: 135px; max-width: 135px; }
+.tabla-inventario-pro .col-inv-corta { min-width: 115px; max-width: 115px; }
+.tabla-inventario-pro .col-inv-lado { min-width: 80px; }
+.tabla-inventario-pro .col-inv-proveedor { min-width: 165px; max-width: 165px; }
+.tabla-inventario-pro .col-inv-grupo { min-width: 120px; max-width: 120px; }
+.tabla-inventario-pro .col-inv-estante { min-width: 95px; }
+.tabla-inventario-pro .col-inv-cantidad { min-width: 90px; text-align: center; }
+.tabla-inventario-pro .col-inv-precio { min-width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
+.tabla-inventario-pro .col-inv-fecha { min-width: 125px; }
+.tabla-inventario-pro .col-inv-tipo { min-width: 110px; }
+
+.tabla-inventario-pro .texto-truncado {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tabla-inventario-pro .col-inv-codigo .texto-truncado { max-width: calc(var(--inv-codigo-w) - 24px); }
+.tabla-inventario-pro .col-inv-desc .texto-truncado { max-width: calc(var(--inv-desc-w) - 24px); }
+.tabla-inventario-pro .col-inv-proveedor .texto-truncado { max-width: 150px; }
+.tabla-inventario-pro .col-inv-grupo .texto-truncado { max-width: 105px; }
+
+/* Columnas fijas: Código, Descripción y Acciones */
+.tabla-inventario-pro .col-inv-codigo,
+.tabla-inventario-pro .col-inv-desc,
+.tabla-inventario-pro .col-inv-acciones {
+    position: sticky;
+    z-index: 3;
+    background-color: #fff;
+}
+
+.tabla-inventario-pro .col-inv-codigo {
+    left: 0;
+    width: var(--inv-codigo-w);
+    min-width: var(--inv-codigo-w);
+    max-width: var(--inv-codigo-w);
+    box-shadow: 1px 0 0 var(--tn-border);
+}
+
+.tabla-inventario-pro .col-inv-desc {
+    left: var(--inv-codigo-w);
+    width: var(--inv-desc-w);
+    min-width: var(--inv-desc-w);
+    max-width: var(--inv-desc-w);
+    box-shadow: 1px 0 0 var(--tn-border);
+}
+
+.tabla-inventario-pro .col-inv-acciones {
+    right: 0;
+    width: var(--inv-acciones-w);
+    min-width: var(--inv-acciones-w);
+    max-width: var(--inv-acciones-w);
+    text-align: center;
+    box-shadow: -1px 0 0 var(--tn-border);
+}
+
+.tabla-inventario-pro thead .col-inv-codigo,
+.tabla-inventario-pro thead .col-inv-desc,
+.tabla-inventario-pro thead .col-inv-acciones {
+    background-color: #f8f9fa;
+    z-index: 4;
+}
+
+.tabla-inventario-pro.table-hover > tbody > tr:hover > .col-inv-codigo,
+.tabla-inventario-pro.table-hover > tbody > tr:hover > .col-inv-desc,
+.tabla-inventario-pro.table-hover > tbody > tr:hover > .col-inv-acciones {
+    background-color: #f1f3f5;
+}
+
+.dato-pendiente {
+    color: #adb5bd;
+    cursor: help;
+}
+
+.modal-seccion-titulo {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tn-muted);
+    margin: 0 0 0.75rem;
+}
+
+.modal-seccion-titulo .icono {
+    width: 0.95rem;
+    height: 0.95rem;
+}
+
+@media (max-width: 767.98px) {
+    .tabla-inventario-pro {
+        --inv-codigo-w: 115px;
+        --inv-desc-w: 190px;
+        --inv-acciones-w: 105px;
+        min-width: 2100px;
+    }
+
+    .tabla-inventario-pro .col-inv-proveedor .texto-truncado { max-width: 120px; }
+    .tabla-inventario-pro .col-inv-desc .texto-truncado { max-width: calc(var(--inv-desc-w) - 20px); }
+}
+
+

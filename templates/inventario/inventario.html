@@ -6,194 +6,692 @@
 {% block title %}Inventario{% endblock %}
 
 {% block content %}
-{{ encabezado_pagina(
+{% call encabezado_pagina(
     'Inventario',
-    'Consulta existencias, precios, grupos y etiquetas de los artículos registrados.',
+    'Consulta existencias, precios y ubicaciones. Distingue el inventario teórico de las facturas y el físico contado con lector.',
     'inventario',
     [('Inicio', url_for('index')), ('Inventario', None)]
-) }}
+) %}
+    <form method="post" class="page-header-form">
+        <input type="hidden" name="accion" value="descargar_inventario">
+        <button type="submit" class="btn btn-primary">
+            {{ icono('caja-abajo') }} Descargar inventario
+        </button>
+    </form>
 
-<div class="card card-body border-0 shadow mb-4">
-  <h2 class="h5 mb-3 d-flex align-items-center gap-2">{{ icono('inventario') }} Descargar inventario</h2>
-  <p class="text-muted small mb-3">Genera una copia del inventario actual en formato descargable.</p>
-  <form method="post">
-      <input type="hidden" name="accion" value="descargar_inventario">
-      <div class="row g-2 align-items-end">
-          <div class="col-md-12">
-              <button type="submit" class="btn btn-primary">{{ icono('pdf') }} Descargar inventario</button>
-          </div>
-      </div>
-  </form>
-</div>
+    <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalInventarioTeorico">
+        {{ icono('base-datos') }} Generar inventario teórico
+    </button>
 
-<!-- Filtro de búsqueda -->
-<div class="card card-body border-0 shadow mb-4">
-  <h2 class="h5 mb-3 d-flex align-items-center gap-2">{{ icono('buscar') }} Buscar artículos</h2>
-  <div class="row g-2">
-      <div class="col-md-4 col-lg-3">
-          <input type="text" id="filtroTodos" placeholder="Referencia, descripción, proveedor…" class="form-control">
-      </div>
-      <div class="col-md-2">
-          <button id="btnLimpiarFiltros" class="btn btn-secondary w-100">Limpiar</button>
-      </div>
-  </div>
-</div>
+    <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalInventarioFisico">
+        {{ icono('escaner') }} Iniciar inventario físico
+    </button>
 
-<div class="card border-0 shadow tabla-scroll">
-  <table class="table table-hover tabla-inventario-listado">
-      <thead>
-          <tr>
-              <th class="border-gray-200">ID</th>
-              <th class="border-gray-200">Referencia</th>
-              <th class="border-gray-200">Descripcion</th>						
-              <th class="border-gray-200">Cantidad</th>
-              <th class="border-gray-200">Precio</th>
-              <th class="border-gray-200">Proveedor</th>
-              <th class="border-gray-200">Fecha Actu</th>
-              <th class="border-gray-200">Grupo</th>
-              <th class="border-gray-200">Acciones</th>
-          </tr>
-      </thead>
-      <tbody id="tablaInventario">
-          {% for id, codigoBarras, referencia, descripcion, cantidad, precioVenta, precioVentaCifrado, precioMaxDescuento, proveedor, fechaActualizacion, grupo in items %}
-          <tr>
-              <td><span class="fw-bold">{{ id }}</span></td>
-              <td><span class="fw-bold">{{ referencia }}</span></td>
-              <td><span class="fw-normal">{{ descripcion }}</span></td>
-              <td><span class="fw-normal">{{ cantidad }}</span></td>
-              <td><span class="fw-bold">$ {{ precioVenta }}</span></td>
-              <td><span class="fw-normal">{{ proveedor }}</span></td>   
-              <td><span class="fw-normal">{{ fechaActualizacion }}</span></td>   
-              <td><span class="fw-normal">{{ grupo }}</span></td> 
-              <td>
-                    <button type="button" class="btn btn-primary btn-editar"
-                        data-id="{{ id }}"
-                        data-codigo="{{ codigoBarras }}"
-                        data-descripcion="{{ descripcion }}"
-                        data-cantidad="{{ cantidad }}"
-                        data-precio="{{ precioVenta }}"
-                        data-grupo="{{ grupo }}">
-                        Editar
-                    </button>
-              </td>
-          </tr>
-          {% endfor %}
-      </tbody>
-  </table>
-</div>
+    <a href="#panelFiltros" class="btn btn-outline-secondary">
+        {{ icono('filtrar') }} Filtrar
+    </a>
+{% endcall %}
 
-<div class="card-footer px-3 border-0 d-flex flex-column flex-lg-row align-items-center justify-content-between">
-  <nav aria-label="Page navigation example">
-      <ul class="pagination mb-0" id="pagination"></ul>
-  </nav>
-  <div class="fw-normal small mt-4 mt-lg-0" id="infoPaginacion"></div>
-</div>
-
-<!-- MODAL FLOTANTE PARA EDITAR -->
-<div class="modal fade" id="modalEditar" tabindex="-1" aria-labelledby="modalEditarLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="modalEditarLabel">Editar Item</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <form id="formEditarItem">
-          <input type="hidden" id="itemId">
-          
-          <div class="mb-3">
-            <label for="codigoBarrasEdit" class="form-label">Código Barras</label>
-            <input type="text" class="form-control" id="codigoBarrasEdit" readonly>
-          </div>
-
-          <div class="mb-3">
-            <label for="descripcionEdit" class="form-label">Descripción</label>
-            <input type="text" class="form-control" id="descripcionEdit">
-          </div>
-
-          <div class="mb-3">
-            <label for="cantidadEdit" class="form-label">Cantidad</label>
-            <input type="number" class="form-control" id="cantidadEdit">
-          </div>
-
-          <div class="mb-3">
-            <label for="precioEdit" class="form-label">Precio Venta</label>
-            <input type="number" class="form-control" id="precioEdit" step="0.01">
-          </div>
-
-          <div class="mb-3">
-            <label for="grupoEdit" class="form-label">Grupo</label>
-            <input type="text" class="form-control" id="grupoEdit">
-          </div>
-
-          
-
-          <!-- Sección de impresión -->
-          <div id="seccionImpresion" style="display: none;" class="border-top pt-3 mt-3">
-                <h6>Impresión</h6>
-                <div id="seccionCantidadImprimir" style="display: none;" class="mb-3">
-                    <label for="cantidadImprimir" class="form-label">Cantidad a Imprimir</label>
-                    <input type="number" class="form-control" id="cantidadImprimir" min="1" value="1">
+<!-- ============================================================ -->
+<!-- Explicación visual de los tipos de inventario               -->
+<!-- ============================================================ -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm h-100 info-tile info-tile-teorico">
+            <div class="card-body d-flex align-items-start gap-3">
+                <span class="info-tile-icon">{{ icono('facturas') }}</span>
+                <div>
+                    <h2 class="h6 mb-1 d-flex align-items-center gap-2">
+                        Inventario teórico
+                        <span class="badge badge-teorico">Teórico</span>
+                    </h2>
+                    <p class="text-muted small mb-0">
+                        Artículo agregado desde las facturas del rango de fechas mediante el proceso masivo.
+                    </p>
                 </div>
-
-                <div id="seccionColumna" style="display: none;" class="mb-3">
-                    <label for="columnaInicio" class="form-label">Columna de Inicio</label>
-                    <select id="columnaInicio" class="form-control">
-                        <option value="1">Columna 1</option>
-                        <option value="2">Columna 2</option>
-                    </select>
-                </div>
-
-                <div id="seccionEtiqueta" style="display: none;" class="border-top pt-3 mt-3">
-                    <label class="form-label">Etiqueta BarTender</label>
-                    <select id="selectEtiqueta" class="form-select" required>
-                    <option value="">-- Selecciona una etiqueta --</option>
-                    {% for t in bartender_templates %}
-                        <option value="{{ t[0] }}">{{ t[1] }}</option>
-                    {% endfor %}
-                    </select>
-                </div>
-          </div>
-
-          
-
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-info" id="btnImprimirModal">Imprimir</button>
-        <button type="button" class="btn btn-success" id="btnGuardarItem">Guardar Cambios</button>
-      </div>
+            </div>
+        </div>
     </div>
-  </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card border-0 shadow-sm h-100 info-tile info-tile-fisico">
+            <div class="card-body d-flex align-items-start gap-3">
+                <span class="info-tile-icon">{{ icono('escaner') }}</span>
+                <div>
+                    <h2 class="h6 mb-1 d-flex align-items-center gap-2">
+                        Inventario físico
+                        <span class="badge badge-fisico">Físico</span>
+                    </h2>
+                    <p class="text-muted small mb-0">
+                        Artículo contado físicamente mediante lector de código de barras.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
+<!-- ============================================================ -->
+<!-- Panel de filtros                                            -->
+<!-- ============================================================ -->
+<div class="card border-0 shadow-sm mb-4" id="panelFiltros">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h2 class="h5 mb-1 d-flex align-items-center gap-2">
+                {{ icono('filtrar') }} Filtrar inventario
+            </h2>
+            <p class="text-muted small mb-0">Combina los campos por grupos para acotar los resultados.</p>
+            <p class="text-muted small mb-0">Los campos que la consulta aún no expone se muestran como «—».</p>
+        </div>
+        <span class="badge bg-light text-dark border" id="contadorFiltros">Sin filtros activos</span>
+    </div>
 
+    <div class="card-body">
+        <form id="formFiltros" autocomplete="off">
+            <fieldset class="filtro-grupo">
+                <legend>Identificación del artículo</legend>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroCodigo" class="form-label">Código de barras</label>
+                        <input type="text" id="filtroCodigo" class="form-control" placeholder="Ej. 00001234">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroDescripcion" class="form-label">Descripción</label>
+                        <input type="text" id="filtroDescripcion" class="form-control" placeholder="Descripción estandarizada">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroReferencia" class="form-label">Referencia del repuesto</label>
+                        <input type="text" id="filtroReferencia" class="form-control" placeholder="Ej. 04465-0K290">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroEquivalente" class="form-label">Equivalente</label>
+                        <input type="text" id="filtroEquivalente" class="form-control" placeholder="Referencia alterna">
+                    </div>
+                </div>
+            </fieldset>
 
+            <fieldset class="filtro-grupo">
+                <legend>Clasificación</legend>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label for="filtroMarcaArticulo" class="form-label">Marca del artículo</label>
+                        <input type="text" id="filtroMarcaArticulo" class="form-control" placeholder="Fabricante">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label for="filtroMarcaVehiculo" class="form-label">Marca del vehículo</label>
+                        <input type="text" id="filtroMarcaVehiculo" class="form-control" placeholder="Toyota / Nissan">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label for="filtroModelo" class="form-label">Modelo del vehículo</label>
+                        <input type="text" id="filtroModelo" class="form-control" placeholder="Hilux / Frontier">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroProveedor" class="form-label">Proveedor</label>
+                        <input type="text" id="filtroProveedor" class="form-control" placeholder="Nombre del proveedor">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroGrupo" class="form-label">Grupo</label>
+                        <input type="text" id="filtroGrupo" class="form-control" placeholder="Grupo del artículo">
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="filtro-grupo">
+                <legend>Ubicación</legend>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroUbicacion" class="form-label">Ubicación</label>
+                        <input type="text" id="filtroUbicacion" class="form-control" placeholder="Piso / pasillo / estante">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroEstante" class="form-label">Estante</label>
+                        <input type="text" id="filtroEstante" class="form-control" placeholder="Ej. E-2">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroFechaDesde" class="form-label">Fecha inicial</label>
+                        <input type="date" id="filtroFechaDesde" class="form-control">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroFechaHasta" class="form-label">Fecha final</label>
+                        <input type="date" id="filtroFechaHasta" class="form-control">
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="filtro-grupo">
+                <legend>Tipo y existencia</legend>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroTipo" class="form-label">Tipo de inventario</label>
+                        <select id="filtroTipo" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="teorico">Teórico</option>
+                            <option value="fisico">Físico</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label for="filtroStock" class="form-label">Estado de existencia</label>
+                        <select id="filtroStock" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="con">Con stock</option>
+                            <option value="sin">Sin stock</option>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 border-top pt-3 mt-3">
+                <span class="text-muted small" id="resumenFiltros">Mostrando todos los artículos.</span>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-secondary" id="btnLimpiarFiltros">
+                        {{ icono('limpiar') }} Limpiar filtros
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="btnAplicarFiltros">
+                        {{ icono('filtrar') }} Filtrar
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Tabla de inventario                                         -->
+<!-- ============================================================ -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h2 class="h5 mb-1 d-flex align-items-center gap-2">
+                {{ icono('inventario') }} Artículos en inventario
+            </h2>
+            <p class="text-muted small mb-0">Las columnas Código, Descripción y Acciones permanecen fijas al desplazarse.</p>
+        </div>
+        <span class="badge bg-light text-dark border" id="contadorArticulos">{{ items|length }} artículo{{ '' if items|length == 1 else 's' }}</span>
+    </div>
+
+    <div class="tabla-scroll">
+        <table class="table table-hover tabla-inventario-pro" id="tablaInventarioPro">
+            <thead>
+                <tr>
+                    <th class="col-inv-codigo">Código de barras</th>
+                    <th class="col-inv-desc">Descripción estandarizada</th>
+                    <th class="col-inv-referencia">Referencia</th>
+                    <th class="col-inv-media">Equivalente</th>
+                    <th class="col-inv-media">Marca del artículo</th>
+                    <th class="col-inv-corta">Marca del vehículo</th>
+                    <th class="col-inv-corta">Modelo del vehículo</th>
+                    <th class="col-inv-lado">Lado</th>
+                    <th class="col-inv-proveedor">Proveedor</th>
+                    <th class="col-inv-grupo">Grupo</th>
+                    <th class="col-inv-media">Ubicación</th>
+                    <th class="col-inv-estante">Estante</th>
+                    <th class="col-inv-cantidad">Cantidad</th>
+                    <th class="col-inv-precio">Precio</th>
+                    <th class="col-inv-fecha">Fecha de ingreso</th>
+                    <th class="col-inv-tipo">Tipo de inventario</th>
+                    <th class="col-inv-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tablaInventario">
+                {% for item in items %}
+                    {% set id = item[0] %}
+                    {% set codigoBarras = item[1] %}
+                    {% set referencia = item[2] %}
+                    {% set descripcion = item[3] %}
+                    {% set cantidad = item[4] or 0 %}
+                    {% set precioVenta = item[5] or 0 %}
+                    {% set proveedor = item[8] %}
+                    {% set fechaActualizacion = item[9] %}
+                    {% set grupo = item[10] %}
+
+                    {# Campos opcionales: se mostrarán cuando la consulta los exponga. #}
+                    {% set equivalente = item[11] if item|length > 11 else '' %}
+                    {% set marca_articulo = item[12] if item|length > 12 else '' %}
+                    {% set marca_vehiculo = item[13] if item|length > 13 else '' %}
+                    {% set modelo = item[14] if item|length > 14 else '' %}
+                    {% set lado = item[15] if item|length > 15 else '' %}
+                    {% set ubicacion = item[16] if item|length > 16 else '' %}
+                    {% set estante = item[17] if item|length > 17 else '' %}
+                    {# El inventario actual proviene del proceso de facturas; si la consulta
+                       aún no expone inventariadoTeorico, se muestra como teórico. #}
+                    {% set es_teorico = item[18] if item|length > 18 and item[18] is not none else true %}
+
+                    <tr
+                        data-codigo="{{ codigoBarras or '' }}"
+                        data-descripcion="{{ descripcion or '' }}"
+                        data-referencia="{{ referencia or '' }}"
+                        data-equivalente="{{ equivalente or '' }}"
+                        data-marca-articulo="{{ marca_articulo or '' }}"
+                        data-marca-vehiculo="{{ marca_vehiculo or '' }}"
+                        data-modelo="{{ modelo or '' }}"
+                        data-lado="{{ lado or '' }}"
+                        data-proveedor="{{ proveedor or '' }}"
+                        data-grupo="{{ grupo or '' }}"
+                        data-ubicacion="{{ ubicacion or '' }}"
+                        data-estante="{{ estante or '' }}"
+                        data-fecha="{{ fechaActualizacion or '' }}"
+                        data-tipo="{{ 'teorico' if es_teorico else 'fisico' }}"
+                        data-stock="{{ cantidad }}"
+                    >
+                        <td class="col-inv-codigo">
+                            <span class="texto-truncado fw-semibold" title="{{ codigoBarras or 'Sin código de barras' }}">
+                                {{ codigoBarras or '—' }}
+                            </span>
+                        </td>
+
+                        <td class="col-inv-desc">
+                            <span class="texto-truncado" title="{{ descripcion or '' }}">{{ descripcion or '—' }}</span>
+                        </td>
+
+                        <td class="col-inv-referencia">
+                            <span class="texto-truncado" title="{{ referencia or '' }}">{{ referencia or '—' }}</span>
+                        </td>
+
+                        <td class="col-inv-media">
+                            {% if equivalente %}<span title="{{ equivalente }}">{{ equivalente }}</span>
+                            {% else %}<span class="dato-pendiente" title="El campo se mostrará al integrarlo en la consulta.">—</span>{% endif %}
+                        </td>
+
+                        <td class="col-inv-media">
+                            {% if marca_articulo %}<span title="{{ marca_articulo }}">{{ marca_articulo }}</span>
+                            {% else %}<span class="dato-pendiente" title="El campo se mostrará al integrarlo en la consulta.">—</span>{% endif %}
+                        </td>
+
+                        <td class="col-inv-corta">
+                            {% if marca_vehiculo %}<span title="{{ marca_vehiculo }}">{{ marca_vehiculo }}</span>
+                            {% else %}<span class="dato-pendiente" title="El campo se mostrará al integrarlo en la consulta.">—</span>{% endif %}
+                        </td>
+
+                        <td class="col-inv-corta">
+                            {% if modelo %}<span title="{{ modelo }}">{{ modelo }}</span>
+                            {% else %}<span class="dato-pendiente" title="El campo se mostrará al integrarlo en la consulta.">—</span>{% endif %}
+                        </td>
+
+                        <td class="col-inv-lado">
+                            {% if lado %}<span title="{{ lado }}">{{ lado }}</span>
+                            {% else %}<span class="dato-pendiente" title="El campo se mostrará al integrarlo en la consulta.">—</span>{% endif %}
+                        </td>
+
+                        <td class="col-inv-proveedor">
+                            <span class="texto-truncado" title="{{ proveedor or '' }}">{{ proveedor or '—' }}</span>
+                        </td>
+
+                        <td class="col-inv-grupo">
+                            <span class="texto-truncado" title="{{ grupo or '' }}">{{ grupo or '—' }}</span>
+                        </td>
+
+                        <td class="col-inv-media">
+                            {% if ubicacion %}<span title="{{ ubicacion }}">{{ ubicacion }}</span>
+                            {% else %}<span class="dato-pendiente" title="El campo se mostrará al integrarlo en la consulta.">—</span>{% endif %}
+                        </td>
+
+                        <td class="col-inv-estante">
+                            {% if estante %}<span title="{{ estante }}">{{ estante }}</span>
+                            {% else %}<span class="dato-pendiente" title="El campo se mostrará al integrarlo en la consulta.">—</span>{% endif %}
+                        </td>
+
+                        <td class="col-inv-cantidad">
+                            <span class="badge {{ 'bg-success' if cantidad|int > 0 else 'bg-danger' }}" title="{{ 'Con stock' if cantidad|int > 0 else 'Sin stock' }}">
+                                {{ cantidad }}
+                            </span>
+                        </td>
+
+                        <td class="col-inv-precio">
+                            <span class="fw-semibold">$ {{ "{:,.0f}".format(precioVenta).replace(",", ".") }}</span>
+                        </td>
+
+                        <td class="col-inv-fecha">
+                            <span title="{{ fechaActualizacion or '' }}">{{ fechaActualizacion or '—' }}</span>
+                        </td>
+
+                        <td class="col-inv-tipo">
+                            {% if es_teorico %}
+                                <span class="badge badge-teorico" title="Teórico: ingresado mediante el proceso masivo de facturas.">
+                                    {{ icono('facturas') }} Teórico
+                                </span>
+                            {% else %}
+                                <span class="badge badge-fisico" title="Físico: contado con pistola láser.">
+                                    {{ icono('escaner') }} Físico
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td class="col-inv-acciones">
+                            <button type="button" class="btn btn-sm btn-outline-primary btn-editar"
+                                data-id="{{ id }}"
+                                data-codigo="{{ codigoBarras or '' }}"
+                                data-descripcion="{{ descripcion or '' }}"
+                                data-cantidad="{{ cantidad }}"
+                                data-precio="{{ precioVenta }}"
+                                data-grupo="{{ grupo or '' }}"
+                                data-referencia="{{ referencia or '' }}"
+                                data-equivalente="{{ equivalente or '' }}"
+                                data-marca-articulo="{{ marca_articulo or '' }}"
+                                data-marca-vehiculo="{{ marca_vehiculo or '' }}"
+                                data-modelo="{{ modelo or '' }}"
+                                data-lado="{{ lado or '' }}"
+                                data-ubicacion="{{ ubicacion or '' }}"
+                                data-estante="{{ estante or '' }}"
+                                data-fecha="{{ fechaActualizacion or '' }}"
+                                data-tipo="{{ 'teorico' if es_teorico else 'fisico' }}"
+                                title="Editar {{ descripcion or 'artículo' }}">
+                                {{ icono('editar') }} Editar
+                            </button>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="17" class="text-center text-muted py-4">
+                            No hay artículos registrados en el inventario.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3 d-flex flex-column flex-lg-row align-items-center justify-content-between gap-3">
+        <nav aria-label="Paginación de inventario">
+            <ul class="pagination mb-0" id="pagination"></ul>
+        </nav>
+        <div class="small text-muted" id="infoPaginacion"></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Modal: generar inventario teórico (solo visual)             -->
+<!-- ============================================================ -->
+<div class="modal fade" id="modalInventarioTeorico" tabindex="-1" aria-labelledby="modalInventarioTeoricoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 d-flex align-items-center gap-2" id="modalInventarioTeoricoLabel">
+                    {{ icono('base-datos') }} Generar inventario teórico
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+
+            <form id="formInventarioTeorico">
+                <div class="modal-body">
+                    <div class="alert alert-info d-flex gap-2 mb-4" role="alert">
+                        {{ icono('info') }}
+                        <div class="small mb-0">
+                            Este formulario está preparado visualmente. Todavía no modifica el inventario.
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-12 col-sm-6">
+                            <label for="fecha_inicial_teorico" class="form-label">Fecha inicial</label>
+                            <input type="date" class="form-control" id="fecha_inicial_teorico" name="fecha_inicial_teorico">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label for="fecha_final_teorico" class="form-label">Fecha final</label>
+                            <input type="date" class="form-control" id="fecha_final_teorico" name="fecha_final_teorico">
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border d-none mt-3 mb-0" id="previewTeorico" role="status"></div>
+                </div>
+
+                <div class="modal-footer flex-wrap gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-outline-primary" id="btnVistaPreviaTeorico">
+                        {{ icono('ojo') }} Vista previa
+                    </button>
+                    <button type="button" class="btn btn-primary" id="btnProcesarTeorico" data-pendiente="true">
+                        {{ icono('base-datos') }} Procesar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Modal: iniciar inventario físico (solo visual)              -->
+<!-- ============================================================ -->
+<div class="modal fade" id="modalInventarioFisico" tabindex="-1" aria-labelledby="modalInventarioFisicoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 d-flex align-items-center gap-2" id="modalInventarioFisicoLabel">
+                    {{ icono('escaner') }} Iniciar inventario físico
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="alert alert-warning d-flex gap-2" role="alert">
+                    {{ icono('alerta') }}
+                    <div class="small mb-0">
+                        La lectura con pistola láser se implementará en una siguiente etapa.
+                    </div>
+                </div>
+
+                <ol class="small text-muted ps-3 mb-4">
+                    <li>Ubica el cursor en el campo de código de barras.</li>
+                    <li>Escanea el artículo con la pistola láser.</li>
+                    <li>Confirma la cantidad contada y guarda el registro.</li>
+                </ol>
+
+                <form id="formInventarioFisico">
+                    <label for="codigo_barras_fisico" class="form-label">Código de barras</label>
+                    <div class="input-group">
+                        <span class="input-group-text">{{ icono('escaner') }}</span>
+                        <input type="text" class="form-control" id="codigo_barras_fisico" name="codigo_barras_fisico"
+                               placeholder="Escanea o escribe el código" disabled>
+                    </div>
+                    <div class="form-text">Campo preparado para conectar el lector en la siguiente etapa.</div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-success" data-pendiente="true">
+                    {{ icono('check') }} Iniciar conteo
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Modal: editar artículo                                      -->
+<!-- ============================================================ -->
+<div class="modal fade" id="modalEditar" tabindex="-1" aria-labelledby="modalEditarLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 d-flex align-items-center gap-2" id="modalEditarLabel">
+                    {{ icono('editar') }} Editar artículo
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="formEditarItem">
+                    <input type="hidden" id="itemId">
+
+                    <h3 class="modal-seccion-titulo">{{ icono('info') }} Identificación</h3>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-4">
+                            <label for="codigoBarrasEdit" class="form-label">Código de barras</label>
+                            <input type="text" class="form-control" id="codigoBarrasEdit" readonly>
+                        </div>
+                        <div class="col-12 col-md-8">
+                            <label for="descripcionEdit" class="form-label">Descripción estandarizada</label>
+                            <input type="text" class="form-control" id="descripcionEdit">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="referenciaEdit" class="form-label">Referencia</label>
+                            <input type="text" class="form-control" id="referenciaEdit" readonly title="Pendiente de integrar">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="equivalenteEdit" class="form-label">Equivalente</label>
+                            <input type="text" class="form-control" id="equivalenteEdit" readonly title="Pendiente de integrar">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="fechaIngresoEdit" class="form-label">Fecha de ingreso</label>
+                            <input type="text" class="form-control" id="fechaIngresoEdit" readonly>
+                        </div>
+                    </div>
+
+                    <h3 class="modal-seccion-titulo">{{ icono('etiqueta') }} Clasificación</h3>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-4">
+                            <label for="marcaArticuloEdit" class="form-label">Marca del artículo</label>
+                            <input type="text" class="form-control" id="marcaArticuloEdit" readonly title="Pendiente de integrar">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="marcaVehiculoEdit" class="form-label">Marca del vehículo</label>
+                            <input type="text" class="form-control" id="marcaVehiculoEdit" readonly title="Pendiente de integrar">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="modeloEdit" class="form-label">Modelo del vehículo</label>
+                            <input type="text" class="form-control" id="modeloEdit" readonly title="Pendiente de integrar">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="ladoEdit" class="form-label">Lado</label>
+                            <input type="text" class="form-control" id="ladoEdit" readonly title="Pendiente de integrar">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="grupoEdit" class="form-label">Grupo</label>
+                            <input type="text" class="form-control" id="grupoEdit">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Tipo de inventario</label>
+                            <div class="form-control d-flex align-items-center bg-light" id="tipoInventarioEdit" style="min-height: 38px;">
+                                <span class="badge badge-teorico">{{ icono('facturas') }} Teórico</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 class="modal-seccion-titulo">{{ icono('inventario') }} Inventario y precios</h3>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-4">
+                            <label for="cantidadEdit" class="form-label">Cantidad</label>
+                            <input type="number" class="form-control" id="cantidadEdit" min="0">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label for="precioEdit" class="form-label">Precio de venta</label>
+                            <input type="number" class="form-control" id="precioEdit" step="0.01" min="0">
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Stock</label>
+                            <div class="form-control d-flex align-items-center bg-light" id="stockEdit" style="min-height: 38px;">
+                                <span class="badge bg-success">Con stock</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 class="modal-seccion-titulo">{{ icono('inventario') }} Ubicación</h3>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label for="ubicacionEdit" class="form-label">Ubicación</label>
+                            <input type="text" class="form-control" id="ubicacionEdit" readonly title="Pendiente de integrar">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="estanteEdit" class="form-label">Estante</label>
+                            <input type="text" class="form-control" id="estanteEdit" readonly title="Pendiente de integrar">
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border small mt-4 mb-0">
+                        Los campos atenuados o de solo lectura se conectarán al backend en una siguiente etapa.
+                        Por ahora solo se conserva la actualización de descripción, cantidad, precio y grupo.
+                    </div>
+
+                    <!-- Sección de impresión: conserva la lógica actual -->
+                    <div id="seccionImpresion" style="display: none;" class="border-top pt-3 mt-4">
+                        <h3 class="modal-seccion-titulo">{{ icono('pdf') }} Impresión</h3>
+                        <div id="seccionCantidadImprimir" style="display: none;" class="mb-3">
+                            <label for="cantidadImprimir" class="form-label">Cantidad a imprimir</label>
+                            <input type="number" class="form-control" id="cantidadImprimir" min="1" value="1">
+                        </div>
+
+                        <div id="seccionColumna" style="display: none;" class="mb-3">
+                            <label for="columnaInicio" class="form-label">Columna de inicio</label>
+                            <select id="columnaInicio" class="form-control">
+                                <option value="1">Columna 1</option>
+                                <option value="2">Columna 2</option>
+                            </select>
+                        </div>
+
+                        <div id="seccionEtiqueta" style="display: none;" class="border-top pt-3 mt-3">
+                            <label class="form-label" for="selectEtiqueta">Etiqueta BarTender</label>
+                            <select id="selectEtiqueta" class="form-select" required>
+                                <option value="">-- Selecciona una etiqueta --</option>
+                                {% for t in bartender_templates %}
+                                    <option value="{{ t[0] }}">{{ t[1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-info" id="btnImprimirModal">Imprimir</button>
+                <button type="button" class="btn btn-success" id="btnGuardarItem">Guardar cambios</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const todasFilas = Array.from(document.querySelectorAll('#tablaInventario tr'));
+    const todasFilas = Array.from(document.querySelectorAll('#tablaInventario tr'))
+        .filter(fila => fila.dataset.stock !== undefined);
     const filasPorPagina = 30;
     let paginaActual = 1;
     let filasVisibles = [...todasFilas];
     let estadoImpresion = {}; // {id: 'esperandoCantidad' o 'listo'}
 
-    // Variables para el modal
-    let modalEditar = new bootstrap.Modal(document.getElementById('modalEditar'), {
+    const modalEditar = new bootstrap.Modal(document.getElementById('modalEditar'), {
         backdrop: 'static',
         keyboard: false
     });
 
-    window.abrirModalEditar = function(id, codigo, descripcion, cantidad, precio, grupo) {
-        document.getElementById('itemId').value = id;
-        document.getElementById('codigoBarrasEdit').value = codigo;
-        document.getElementById('descripcionEdit').value = descripcion;
-        document.getElementById('cantidadEdit').value = cantidad;
-        document.getElementById('precioEdit').value = precio;
-        document.getElementById('grupoEdit').value = grupo;
-        
-        estadoImpresion[id] = 'esperandoCantidad'; // Resetear estado
+    function texto(valor) {
+        return valor || '';
+    }
+
+    window.abrirModalEditar = function(datos) {
+        const d = datos || {};
+
+        document.getElementById('itemId').value = texto(d.id);
+        document.getElementById('codigoBarrasEdit').value = texto(d.codigo);
+        document.getElementById('descripcionEdit').value = texto(d.descripcion);
+        document.getElementById('cantidadEdit').value = texto(d.cantidad);
+        document.getElementById('precioEdit').value = texto(d.precio);
+        document.getElementById('grupoEdit').value = texto(d.grupo);
+        document.getElementById('referenciaEdit').value = texto(d.referencia);
+        document.getElementById('equivalenteEdit').value = texto(d.equivalente);
+        document.getElementById('marcaArticuloEdit').value = texto(d.marcaArticulo);
+        document.getElementById('marcaVehiculoEdit').value = texto(d.marcaVehiculo);
+        document.getElementById('modeloEdit').value = texto(d.modelo);
+        document.getElementById('ladoEdit').value = texto(d.lado);
+        document.getElementById('ubicacionEdit').value = texto(d.ubicacion);
+        document.getElementById('estanteEdit').value = texto(d.estante);
+        document.getElementById('fechaIngresoEdit').value = texto(d.fecha);
+
+        const esTeorico = (d.tipo || 'teorico') === 'teorico';
+        const tipoContenedor = document.getElementById('tipoInventarioEdit');
+        tipoContenedor.innerHTML = esTeorico
+            ? '<span class="badge badge-teorico">Teórico</span>'
+            : '<span class="badge badge-fisico">Físico</span>';
+
+        const stockContenedor = document.getElementById('stockEdit');
+        const cantidad = Number(d.cantidad || 0);
+        stockContenedor.innerHTML = cantidad > 0
+            ? '<span class="badge bg-success">Con stock</span>'
+            : '<span class="badge bg-danger">Sin stock</span>';
+
+        estadoImpresion[d.id] = 'esperandoCantidad';
         document.getElementById('seccionImpresion').style.display = 'none';
         document.getElementById('seccionCantidadImprimir').style.display = 'none';
         document.getElementById('seccionColumna').style.display = 'none';
@@ -201,114 +699,116 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('cantidadImprimir').value = 1;
         document.getElementById('columnaInicio').value = '1';
         document.getElementById('btnImprimirModal').textContent = 'Imprimir';
-        
+
         modalEditar.show();
     };
 
-    // GUARDAR CAMBIOS
-    document.getElementById('btnGuardarItem').addEventListener('click', async function() {
-        const id = document.getElementById('itemId').value;
-        const descripcion = document.getElementById('descripcionEdit').value;
-        const cantidad = document.getElementById('cantidadEdit').value;
-        const precio = document.getElementById('precioEdit').value;
-        const grupo = document.getElementById('grupoEdit').value;
-
-        if (!descripcion.trim() || !cantidad || !precio) {
-            alert('Por favor completa todos los campos');
-            return;
-        }
-
-        try {
-            const response = await fetch('/inventario/actualizar_item', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: id,
-                    descripcion: descripcion,
-                    cantidad: parseInt(cantidad),
-                    precio: parseFloat(precio),
-                    grupo: grupo
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.ok) {
-                alert('Item actualizado correctamente ✔️');
-                location.reload();
-            } else {
-                alert('Error: ' + (data.error || 'No se pudo guardar'));
-            }
-        } catch (error) {
-            alert('Error de conexión: ' + error.message);
-        }
-    });
-
-    // Adjuntar manejador a botones "editar" (evita problemas con comillas en la descripción)
-    document.querySelectorAll('.btn-editar').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const d = btn.dataset;
-            abrirModalEditar(d.id, d.codigo, d.descripcion, d.cantidad, d.precio, d.grupo);
-        });
-    });
-
-    // IMPRESIÓN CON DOS PASOS
-    document.getElementById('btnImprimirModal').addEventListener('click', async function() {
-        const id = document.getElementById('itemId').value;
-        const estado = estadoImpresion[id];
-
-        if (estado === 'esperandoCantidad') {
-            // Primer click: mostrar sección de impresión, cantidad y columna
-            document.getElementById('seccionImpresion').style.display = 'block';
-            document.getElementById('seccionCantidadImprimir').style.display = 'block';
-            document.getElementById('seccionColumna').style.display = 'block';
-            document.getElementById('seccionEtiqueta').style.display = 'block';
-            document.getElementById('cantidadImprimir').focus();
-            document.getElementById('btnImprimirModal').textContent = 'Ejecutar Impresión';
-            estadoImpresion[id] = 'listo';
-        } else if (estado === 'listo') {
-            // Segundo click: imprimir
-            const codigo = document.getElementById('codigoBarrasEdit').value;
+    // GUARDAR CAMBIOS: conserva la lógica actual de actualización.
+    const btnGuardarItem = document.getElementById('btnGuardarItem');
+    if (btnGuardarItem) {
+        btnGuardarItem.addEventListener('click', async function() {
+            const id = document.getElementById('itemId').value;
             const descripcion = document.getElementById('descripcionEdit').value;
+            const cantidad = document.getElementById('cantidadEdit').value;
             const precio = document.getElementById('precioEdit').value;
-            const cantidad = parseInt(document.getElementById('cantidadImprimir').value);
-            const etiquetaSeleccionada = document.getElementById('selectEtiqueta').value;
+            const grupo = document.getElementById('grupoEdit').value;
 
-            if (!cantidad || cantidad < 1) {
-                alert('Ingresa una cantidad válida');
+            if (!descripcion.trim() || !cantidad || !precio) {
+                alert('Por favor completa descripción, cantidad y precio');
                 return;
             }
 
             try {
-                const columnaInicio = parseInt(document.getElementById('columnaInicio').value);
-                const response = await fetch('/inventario/imprimir_etiqueta_nueva', {
+                const response = await fetch('/inventario/actualizar_item', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        codigo: codigo,
+                        id: id,
                         descripcion: descripcion,
-                        precio: precio,
-                        cantidad: cantidad,
-                        columna_inicio: columnaInicio,
-                        template_id: etiquetaSeleccionada
+                        cantidad: parseInt(cantidad),
+                        precio: parseFloat(precio),
+                        grupo: grupo
                     })
                 });
 
                 const data = await response.json();
 
                 if (data.ok) {
-                    alert(`Imprimiendo ${cantidad} etiqueta(s)... ✔️`);
-                    document.getElementById('seccionCantidadImprimir').style.display = 'none';
-                    document.getElementById('btnImprimirModal').textContent = 'Imprimir';
-                    estadoImpresion[id] = 'esperandoCantidad';
+                    alert('Item actualizado correctamente ✔️');
+                    location.reload();
                 } else {
-                    alert('Error: ' + (data.error || 'No se pudo imprimir'));
+                    alert('Error: ' + (data.error || 'No se pudo guardar'));
                 }
             } catch (error) {
                 alert('Error de conexión: ' + error.message);
             }
-        }
+        });
+    }
+
+    document.querySelectorAll('.btn-editar').forEach(btn => {
+        btn.addEventListener('click', function() {
+            abrirModalEditar(btn.dataset);
+        });
     });
+
+    // IMPRESIÓN CON DOS PASOS: conserva la lógica actual.
+    const btnImprimirModal = document.getElementById('btnImprimirModal');
+    if (btnImprimirModal) {
+        btnImprimirModal.addEventListener('click', async function() {
+            const id = document.getElementById('itemId').value;
+            const estado = estadoImpresion[id];
+
+            if (estado === 'esperandoCantidad') {
+                document.getElementById('seccionImpresion').style.display = 'block';
+                document.getElementById('seccionCantidadImprimir').style.display = 'block';
+                document.getElementById('seccionColumna').style.display = 'block';
+                document.getElementById('seccionEtiqueta').style.display = 'block';
+                document.getElementById('cantidadImprimir').focus();
+                document.getElementById('btnImprimirModal').textContent = 'Ejecutar impresión';
+                estadoImpresion[id] = 'listo';
+            } else if (estado === 'listo') {
+                const codigo = document.getElementById('codigoBarrasEdit').value;
+                const descripcion = document.getElementById('descripcionEdit').value;
+                const precio = document.getElementById('precioEdit').value;
+                const cantidad = parseInt(document.getElementById('cantidadImprimir').value);
+                const etiquetaSeleccionada = document.getElementById('selectEtiqueta').value;
+
+                if (!cantidad || cantidad < 1) {
+                    alert('Ingresa una cantidad válida');
+                    return;
+                }
+
+                try {
+                    const columnaInicio = parseInt(document.getElementById('columnaInicio').value);
+                    const response = await fetch('/inventario/imprimir_etiqueta_nueva', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            codigo: codigo,
+                            descripcion: descripcion,
+                            precio: precio,
+                            cantidad: cantidad,
+                            columna_inicio: columnaInicio,
+                            template_id: etiquetaSeleccionada
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.ok) {
+                        alert(`Imprimiendo ${cantidad} etiqueta(s)... ✔️`);
+                        document.getElementById('seccionCantidadImprimir').style.display = 'none';
+                        document.getElementById('btnImprimirModal').textContent = 'Imprimir';
+                        estadoImpresion[id] = 'esperandoCantidad';
+                    } else {
+                        alert('Error: ' + (data.error || 'No se pudo imprimir'));
+                    }
+                } catch (error) {
+                    alert('Error de conexión: ' + error.message);
+                }
+            }
+        });
+    }
 
     function mostrarPagina(pagina) {
         const inicio = (pagina - 1) * filasPorPagina;
@@ -328,7 +828,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (totalPaginas === 0) {
             paginacion.innerHTML = '';
-            info.innerHTML = 'No hay coincidencias';
+            info.textContent = 'No hay coincidencias';
             return;
         }
 
@@ -362,7 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
 
         paginacion.innerHTML = html;
-        info.innerHTML = `Página ${paginaActual} de ${totalPaginas} (${filasVisibles.length} registros)`;
+        info.textContent = `Página ${paginaActual} de ${totalPaginas} (${filasVisibles.length} registros)`;
 
         document.querySelectorAll('#pagination .page-link').forEach((btn) => {
             btn.addEventListener('click', function(e) {
@@ -374,29 +874,132 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function filtrar() {
-        const textoFiltro = document.getElementById('filtroTodos').value.toLowerCase().trim();
-        const palabras = textoFiltro.split(/\s+/).filter(p => p);
-        filasVisibles = todasFilas.filter(fila => {
-            const contenidoFila = Array.from(fila.querySelectorAll('td'))
-                .map(td => td.textContent.toLowerCase())
-                .join(' ');
-            return palabras.every(palabra => contenidoFila.includes(palabra));
+    // -------------------- Filtros --------------------
+    const camposTexto = {
+        filtroCodigo: 'codigo',
+        filtroDescripcion: 'descripcion',
+        filtroReferencia: 'referencia',
+        filtroEquivalente: 'equivalente',
+        filtroMarcaArticulo: 'marcaArticulo',
+        filtroMarcaVehiculo: 'marcaVehiculo',
+        filtroModelo: 'modelo',
+        filtroProveedor: 'proveedor',
+        filtroGrupo: 'grupo',
+        filtroUbicacion: 'ubicacion',
+        filtroEstante: 'estante'
+    };
+
+    function normalizar(valor) {
+        return String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+    }
+
+    function contarFiltrosActivos() {
+        let activos = 0;
+        Object.keys(camposTexto).forEach(id => {
+            if (document.getElementById(id).value.trim()) activos++;
         });
+        ['filtroFechaDesde', 'filtroFechaHasta', 'filtroTipo', 'filtroStock'].forEach(id => {
+            if (document.getElementById(id).value) activos++;
+        });
+        return activos;
+    }
+
+    function aplicarFiltros() {
+        const valores = {};
+        Object.entries(camposTexto).forEach(([id, campo]) => {
+            valores[campo] = normalizar(document.getElementById(id).value);
+        });
+
+        const desde = document.getElementById('filtroFechaDesde').value;
+        const hasta = document.getElementById('filtroFechaHasta').value;
+        const tipo = document.getElementById('filtroTipo').value;
+        const stock = document.getElementById('filtroStock').value;
+
+        filasVisibles = todasFilas.filter(fila => {
+            const datos = fila.dataset;
+
+            for (const [campo, valor] of Object.entries(valores)) {
+                if (valor && !normalizar(datos[campo]).includes(valor)) return false;
+            }
+
+            const fecha = (datos.fecha || '').slice(0, 10);
+            if (desde && (!fecha || fecha < desde)) return false;
+            if (hasta && (!fecha || fecha > hasta)) return false;
+
+            if (tipo && datos.tipo !== tipo) return false;
+
+            const cantidad = Number(datos.stock || 0);
+            if (stock === 'con' && cantidad <= 0) return false;
+            if (stock === 'sin' && cantidad > 0) return false;
+
+            return true;
+        });
+
+        const activos = contarFiltrosActivos();
+        const contador = document.getElementById('contadorFiltros');
+        contador.textContent = activos === 0
+            ? 'Sin filtros activos'
+            : `${activos} filtro${activos === 1 ? '' : 's'} activo${activos === 1 ? '' : 's'}`;
+
+        const resumen = document.getElementById('resumenFiltros');
+        resumen.textContent = `${filasVisibles.length} de ${todasFilas.length} artículos coinciden con los filtros.`;
+
         mostrarPagina(1);
     }
 
-    document.getElementById('filtroTodos').addEventListener('input', filtrar);
-    document.getElementById('btnLimpiarFiltros').addEventListener('click', function(e) {
-        e.preventDefault();
-        document.getElementById('filtroTodos').value = '';
+    function limpiarFiltros() {
+        document.getElementById('formFiltros').reset();
         filasVisibles = [...todasFilas];
+        document.getElementById('contadorFiltros').textContent = 'Sin filtros activos';
+        document.getElementById('resumenFiltros').textContent = 'Mostrando todos los artículos.';
         mostrarPagina(1);
+    }
+
+    const formFiltros = document.getElementById('formFiltros');
+    if (formFiltros) {
+        formFiltros.addEventListener('submit', function(e) {
+            e.preventDefault();
+            aplicarFiltros();
+        });
+    }
+
+    const btnLimpiarFiltros = document.getElementById('btnLimpiarFiltros');
+    if (btnLimpiarFiltros) {
+        btnLimpiarFiltros.addEventListener('click', limpiarFiltros);
+    }
+
+    // -------------------- Inventario teórico (solo visual) --------------------
+    const btnVistaPrevia = document.getElementById('btnVistaPreviaTeorico');
+    if (btnVistaPrevia) {
+        btnVistaPrevia.addEventListener('click', function() {
+            const inicial = document.getElementById('fecha_inicial_teorico').value;
+            const final = document.getElementById('fecha_final_teorico').value;
+            const preview = document.getElementById('previewTeorico');
+
+            if (!inicial || !final) {
+                preview.textContent = 'Selecciona la fecha inicial y la fecha final para preparar la vista previa.';
+            } else if (inicial > final) {
+                preview.textContent = 'La fecha inicial no puede ser posterior a la fecha final.';
+            } else {
+                preview.textContent = `Vista previa preparada para el rango ${inicial} a ${final}. La conexión con el backend se implementará en la siguiente etapa.`;
+            }
+
+            preview.classList.remove('d-none');
+        });
+    }
+
+    document.querySelectorAll('[data-pendiente="true"]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            alert('Esta acción está preparada visualmente. Su lógica se conectará en la siguiente etapa.');
+        });
     });
 
     mostrarPagina(1);
 });
 </script>
-
 
 {% endblock %}
