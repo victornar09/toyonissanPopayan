@@ -28,6 +28,14 @@
                   <span class="sidebar-text">Facturas</span>
                 </a>
               </li>
+              <li class="nav-item {% if 'consolidado' in segment %} active {% endif %}">
+                <a href="{{ url_for('consolidado.consolidado_home') }}" class="nav-link">
+                  <span class="sidebar-icon">
+                    <svg class="icon icon-xs me-2" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="2.4"></circle><circle cx="18" cy="6" r="2.4"></circle><circle cx="12" cy="18" r="2.4"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.4 6h7.2M7.2 8.2l3.5 7.5M16.8 8.2l-3.5 7.5"></path></svg>
+                  </span>
+                  <span class="sidebar-text">Consolidado</span>
+                </a>
+              </li>
               <li class="nav-item {% if 'inventario' in segment %} active {% endif %}">
                 <a href="{{ url_for('inventario.inventario_home') }}" class="nav-link">
                   <span class="sidebar-icon">

@@ -195,11 +195,298 @@ def _migrar_inventario_facturas(conn):
             pass
 
 
+def _agregar_columna(conn, tabla, columna, definicion):
+    if columna not in _columnas(conn, tabla):
+        try:
+            conn.execute(
+                f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}"
+            )
+        except sqlite3.OperationalError:
+            pass
+
+
+def _backfill_estados_consolidado(conn):
+    """Calcula el estado inicial de todo el histórico de Consolidado."""
+
+    conn.execute("DROP TABLE IF EXISTS temp._dup_consolidado")
+    conn.execute("""
+        CREATE TEMP TABLE _dup_consolidado AS
+        SELECT UPPER(TRIM(abrevProveedor)) AS abrev,
+               UPPER(TRIM(referenciaProveedor)) AS ref
+        FROM consolidado
+        WHERE abrevProveedor IS NOT NULL
+          AND referenciaProveedor IS NOT NULL
+        GROUP BY UPPER(TRIM(abrevProveedor)),
+                 UPPER(TRIM(referenciaProveedor))
+        HAVING COUNT(*) > 1
+    """)
+
+    conn.execute("""
+        UPDATE consolidado
+        SET estadoConsolidado =
+            CASE
+                WHEN idInventarioUnico IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1 FROM inventarioUnico iu
+                         WHERE iu.id = consolidado.idInventarioUnico
+                     )
+                    THEN 'INVENTARIADO'
+                WHEN EXISTS (
+                    SELECT 1 FROM _dup_consolidado d
+                    WHERE d.abrev = UPPER(TRIM(consolidado.abrevProveedor))
+                      AND d.ref = UPPER(TRIM(consolidado.referenciaProveedor))
+                )
+                    THEN 'BLOQUEADO'
+                WHEN descripcionEstandarizada IS NOT NULL
+                     AND LENGTH(TRIM(descripcionEstandarizada)) >= 3
+                     AND referenciaProveedor IS NOT NULL
+                     AND TRIM(referenciaProveedor) <> ''
+                     AND UPPER(TRIM(referenciaProveedor)) <> 'SIN_REFERENCIA'
+                    THEN 'LISTO_INVENTARIAR'
+                ELSE 'PENDIENTE_REVISION'
+            END
+    """)
+
+    conn.execute("DROP TABLE IF EXISTS temp._dup_consolidado")
+
+
+def _migrar_consolidado(conn):
+    """Agrega estado, relación con inventario y auditoría a consolidado."""
+
+    if not _tabla_existe(conn, "consolidado"):
+        return
+
+    estado_nuevo = "estadoConsolidado" not in _columnas(conn, "consolidado")
+
+    _agregar_columna(
+        conn, "consolidado", "estadoConsolidado",
+        "TEXT NOT NULL DEFAULT 'PENDIENTE_REVISION'",
+    )
+    _agregar_columna(conn, "consolidado", "idInventarioUnico", "INTEGER")
+    _agregar_columna(conn, "consolidado", "fechaInventariado", "DATETIME")
+    _agregar_columna(conn, "consolidado", "usuarioInventariado", "TEXT")
+    _agregar_columna(conn, "consolidado", "fechaCreacion", "DATETIME")
+    _agregar_columna(conn, "consolidado", "fechaModificacion", "DATETIME")
+    _agregar_columna(conn, "consolidado", "usuarioModificacion", "TEXT")
+    _agregar_columna(conn, "consolidado", "grupo", "TEXT")
+
+    # Backfill de auditoría sin destruir información existente.
+    conn.execute("""
+        UPDATE consolidado
+        SET fechaCreacion = COALESCE(fechaCreacion, fechaActualizacion)
+        WHERE fechaCreacion IS NULL
+    """)
+
+    # Claves duplicadas normalizadas (mayúsculas/espacios). No se eliminan:
+    # se marcan como BLOQUEADO para revisión manual. Sólo se ejecuta la
+    # primera vez que se crea la columna, para no revertir estados manuales.
+    if estado_nuevo:
+        _backfill_estados_consolidado(conn)
+
+    # Índice funcional para búsquedas normalizadas (no único: hay histórico).
+    try:
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_consolidado_llave_norm
+            ON consolidado (
+                UPPER(TRIM(abrevProveedor)),
+                UPPER(TRIM(referenciaProveedor))
+            )
+        """)
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_consolidado_estado
+            ON consolidado (estadoConsolidado)
+        """)
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_consolidado_inventario
+            ON consolidado (idInventarioUnico)
+        """)
+    except sqlite3.OperationalError:
+        pass
+
+
+def _migrar_inventario_estados(conn):
+    """Agrega ubicación, costo y estados de etiquetado/conteo a inventarioUnico.
+
+    No elimina columnas históricas. ``inventariadoTeorico`` nunca existió en
+    este esquema; si una base externa la tuviera, se deja intacta y el módulo
+    simplemente deja de usarla.
+    """
+
+    if not _tabla_existe(conn, "inventarioUnico"):
+        return
+
+    _agregar_columna(conn, "inventarioUnico", "costo", "REAL")
+    _agregar_columna(conn, "inventarioUnico", "ubicacion", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "estante", "TEXT")
+    _agregar_columna(
+        conn, "inventarioUnico", "estadoEtiquetado",
+        "TEXT NOT NULL DEFAULT 'PENDIENTE'",
+    )
+    _agregar_columna(
+        conn, "inventarioUnico", "estadoConteo",
+        "TEXT NOT NULL DEFAULT 'SIN_CONTAR'",
+    )
+
+    # Campos del conteo físico aprobado (README: cantidadFisica,
+    # fechaUltimoConteo, stockMinimo, fechaCreacion). Se agregan de forma
+    # aditiva para no perder información histórica.
+    _agregar_columna(conn, "inventarioUnico", "cantidadFisica", "INTEGER")
+    _agregar_columna(conn, "inventarioUnico", "fechaUltimoConteo", "DATETIME")
+    _agregar_columna(conn, "inventarioUnico", "stockMinimo", "INTEGER DEFAULT 0")
+    _agregar_columna(conn, "inventarioUnico", "fechaCreacion", "DATETIME")
+
+    conn.execute("""
+        UPDATE inventarioUnico
+        SET estadoEtiquetado = 'PENDIENTE'
+        WHERE estadoEtiquetado IS NULL OR TRIM(estadoEtiquetado) = ''
+    """)
+    conn.execute("""
+        UPDATE inventarioUnico
+        SET estadoConteo = 'SIN_CONTAR'
+        WHERE estadoConteo IS NULL OR TRIM(estadoConteo) = ''
+    """)
+    conn.execute("""
+        UPDATE inventarioUnico
+        SET fechaCreacion = COALESCE(fechaCreacion, fechaActualizacion)
+        WHERE fechaCreacion IS NULL
+    """)
+
+
+def _migrar_conteo_fisico(conn):
+    """Crea las entidades de sesiones de conteo, lecturas y movimientos.
+
+    Todas las columnas son aditivas y las tablas usan ``IF NOT EXISTS`` para
+    poder ejecutarse sobre bases existentes sin perder datos.
+    """
+
+    if not _tabla_existe(conn, "inventarioUnico"):
+        return
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sesionConteo (
+            idSesion INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            responsable TEXT,
+            fechaInicio DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            fechaFin DATETIME,
+            idUbicacion INTEGER,
+            ubicacion TEXT,
+            estante TEXT,
+            estado TEXT NOT NULL DEFAULT 'ABIERTA',
+            observaciones TEXT,
+            usuarioCreacion TEXT,
+            fechaCreacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            usuarioAplicacion TEXT,
+            fechaAplicacion DATETIME
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS detalleConteo (
+            idDetalle INTEGER PRIMARY KEY AUTOINCREMENT,
+            idSesion INTEGER NOT NULL,
+            idInventarioUnico INTEGER NOT NULL,
+            codigoBarras TEXT,
+            cantidadRegistrada INTEGER NOT NULL DEFAULT 0,
+            cantidadContada INTEGER NOT NULL DEFAULT 0,
+            diferencia INTEGER NOT NULL DEFAULT 0,
+            estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+            ubicacionRegistrada TEXT,
+            ubicacionSesion TEXT,
+            observacion TEXT,
+            UNIQUE (idSesion, idInventarioUnico)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lecturaConteo (
+            idLectura INTEGER PRIMARY KEY AUTOINCREMENT,
+            idSesion INTEGER NOT NULL,
+            idInventarioUnico INTEGER,
+            codigoBarras TEXT,
+            token TEXT,
+            tipo TEXT NOT NULL DEFAULT 'OK',
+            ubicacionRegistrada TEXT,
+            ubicacionSesion TEXT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            usuario TEXT,
+            anulada INTEGER NOT NULL DEFAULT 0,
+            observacion TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS movimientoInventario (
+            idMovimiento INTEGER PRIMARY KEY AUTOINCREMENT,
+            idInventarioUnico INTEGER NOT NULL,
+            tipo TEXT NOT NULL,
+            cantidadAnterior INTEGER,
+            cantidadMovimiento INTEGER,
+            cantidadNueva INTEGER,
+            origen TEXT,
+            idOrigen INTEGER,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            usuario TEXT,
+            observacion TEXT
+        )
+    """)
+
+    indices = [
+        (
+            "idx_sesion_conteo_estado",
+            "CREATE INDEX IF NOT EXISTS idx_sesion_conteo_estado "
+            "ON sesionConteo (estado)",
+        ),
+        (
+            "idx_detalle_conteo_sesion",
+            "CREATE INDEX IF NOT EXISTS idx_detalle_conteo_sesion "
+            "ON detalleConteo (idSesion)",
+        ),
+        (
+            "idx_lectura_conteo_sesion",
+            "CREATE INDEX IF NOT EXISTS idx_lectura_conteo_sesion "
+            "ON lecturaConteo (idSesion)",
+        ),
+        (
+            "idx_lectura_conteo_token",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_lectura_conteo_token "
+            "ON lecturaConteo (token)",
+        ),
+        (
+            "idx_movimiento_inventario_item",
+            "CREATE INDEX IF NOT EXISTS idx_movimiento_inventario_item "
+            "ON movimientoInventario (idInventarioUnico)",
+        ),
+        (
+            "idx_inventario_fecha_conteo",
+            "CREATE INDEX IF NOT EXISTS idx_inventario_fecha_conteo "
+            "ON inventarioUnico (fechaUltimoConteo)",
+        ),
+    ]
+
+    for _, sql in indices:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass
+
+
 def migrar(conn):
     """Aplica todas las migraciones pendientes. Idempotente."""
 
     _migrar_inventario_unico(conn)
     _migrar_inventario_facturas(conn)
+    _migrar_consolidado(conn)
+    _migrar_inventario_estados(conn)
+    _migrar_conteo_fisico(conn)
     conn.commit()
 
 

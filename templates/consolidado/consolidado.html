@@ -1,0 +1,872 @@
+{% extends "layouts/base.html" %}
+
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
+{% block title %}Consolidado{% endblock %}
+
+{% block content %}
+{% call encabezado_pagina(
+    'Consolidado',
+    'Catálogo maestro de artículos conocidos y estandarizados. Aquí se preparan antes de asignarles código e ingresarlos al Inventario.',
+    'consolidado',
+    [('Inicio', url_for('index')), ('Consolidado', None)]
+) %}
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalImportar">
+        {{ icono('base-datos') }} Importar artículos desde facturas
+    </button>
+    <button type="button" class="btn btn-outline-primary" id="btnIrFiltros">
+        {{ icono('filtrar') }} Filtrar
+    </button>
+    <a href="{{ url_for('consolidado.consolidado_home') }}" class="btn btn-outline-secondary">
+        {{ icono('limpiar') }} Limpiar
+    </a>
+{% endcall %}
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 consola-stat">
+            <div class="card-body py-3">
+                <span class="consola-stat-label">Total</span>
+                <strong class="consola-stat-valor">{{ total }}</strong>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 consola-stat consola-stat-listo">
+            <div class="card-body py-3">
+                <span class="consola-stat-label">Listos</span>
+                <strong class="consola-stat-valor">{{ resumen.get('LISTO_INVENTARIAR', 0) }}</strong>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 consola-stat consola-stat-pendiente">
+            <div class="card-body py-3">
+                <span class="consola-stat-label">Pendientes</span>
+                <strong class="consola-stat-valor">{{ resumen.get('PENDIENTE_REVISION', 0) }}</strong>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100 consola-stat consola-stat-bloqueado">
+            <div class="card-body py-3">
+                <span class="consola-stat-label">Bloqueados</span>
+                <strong class="consola-stat-valor">{{ resumen.get('BLOQUEADO', 0) }}</strong>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm h-100 consola-stat consola-stat-inventariado">
+            <div class="card-body py-3">
+                <span class="consola-stat-label">Inventariados</span>
+                <strong class="consola-stat-valor">{{ resumen.get('INVENTARIADO', 0) }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4" id="panelFiltros">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h2 class="h5 mb-1 d-flex align-items-center gap-2">
+                {{ icono('filtrar') }} Filtrar consolidado
+            </h2>
+            <p class="text-muted small mb-0">Combina los campos para ubicar artículos conocidos.</p>
+        </div>
+        <span class="badge bg-light text-dark border">{{ total }} resultado{{ '' if total == 1 else 's' }}</span>
+    </div>
+
+    <div class="card-body">
+        <form method="get" action="{{ url_for('consolidado.consolidado_home') }}" id="formFiltros" autocomplete="off">
+            <fieldset class="filtro-grupo">
+                <legend>Descripción y referencias</legend>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label class="form-label" for="filtroDescripcion">Descripción original</label>
+                        <input class="form-control" type="text" id="filtroDescripcion" name="descripcion" value="{{ filtros.descripcion }}" placeholder="Texto de la factura">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label class="form-label" for="filtroDescripcionEst">Descripción estandarizada</label>
+                        <input class="form-control" type="text" id="filtroDescripcionEst" name="descripcion_estandarizada" value="{{ filtros.descripcion_estandarizada }}" placeholder="Descripción del catálogo">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label class="form-label" for="filtroRefProveedor">Referencia proveedor</label>
+                        <input class="form-control" type="text" id="filtroRefProveedor" name="referencia_proveedor" value="{{ filtros.referencia_proveedor }}" placeholder="Ej. 04465-0K290">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label class="form-label" for="filtroRefRepuesto">Referencia repuesto</label>
+                        <input class="form-control" type="text" id="filtroRefRepuesto" name="referencia_repuesto" value="{{ filtros.referencia_repuesto }}" placeholder="Referencia técnica">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-3">
+                        <label class="form-label" for="filtroEquivalente">Equivalente</label>
+                        <input class="form-control" type="text" id="filtroEquivalente" name="equivalente" value="{{ filtros.equivalente }}" placeholder="Referencia alterna">
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="filtro-grupo">
+                <legend>Clasificación del artículo</legend>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label class="form-label" for="filtroMarca">Marca artículo</label>
+                        <input class="form-control" type="text" id="filtroMarca" name="marca" value="{{ filtros.marca }}" placeholder="Fabricante">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label class="form-label" for="filtroMarcaVehiculo">Marca vehículo</label>
+                        <input class="form-control" type="text" id="filtroMarcaVehiculo" name="marca_vehiculo" value="{{ filtros.marca_vehiculo }}" placeholder="Toyota / Nissan">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label class="form-label" for="filtroModelo">Modelo</label>
+                        <input class="form-control" type="text" id="filtroModelo" name="modelo" value="{{ filtros.modelo }}" placeholder="Hilux / Frontier">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label class="form-label" for="filtroLado">Lado</label>
+                        <input class="form-control" type="text" id="filtroLado" name="lado" value="{{ filtros.lado }}" placeholder="Izquierdo / derecho">
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-2">
+                        <label class="form-label" for="filtroProveedor">Proveedor</label>
+                        <select class="form-select" id="filtroProveedor" name="proveedor">
+                            <option value="">Todos</option>
+                            {% for proveedor in proveedores %}
+                                <option value="{{ proveedor }}" {% if filtros.proveedor == proveedor %}selected{% endif %}>{{ proveedor }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="filtro-grupo">
+                <legend>Estado</legend>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-lg-4">
+                        <label class="form-label" for="filtroEstado">Estado del consolidado</label>
+                        <select class="form-select" id="filtroEstado" name="estado">
+                            <option value="">Todos</option>
+                            {% for estado in estados %}
+                                <option value="{{ estado }}" {% if filtros.estado == estado %}selected{% endif %}>{{ estado }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-sm-6 col-lg-4">
+                        <label class="form-label" for="filtroInventariado">Inventariado</label>
+                        <select class="form-select" id="filtroInventariado" name="inventariado">
+                            <option value="">Todos</option>
+                            <option value="si" {% if filtros.inventariado == 'si' %}selected{% endif %}>Inventariado</option>
+                            <option value="no" {% if filtros.inventariado == 'no' %}selected{% endif %}>No inventariado</option>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 border-top pt-3 mt-3">
+                <span class="text-muted small">Mostrando {{ registros|length }} de {{ total }} registros.</span>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('consolidado.consolidado_home') }}" class="btn btn-outline-secondary">
+                        {{ icono('limpiar') }} Limpiar
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        {{ icono('filtrar') }} Filtrar
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h2 class="h5 mb-1 d-flex align-items-center gap-2">
+                {{ icono('consolidado') }} Artículos conocidos
+            </h2>
+            <p class="text-muted small mb-0">Solo los registros <strong>LISTO_INVENTARIAR</strong> se pueden seleccionar para inventariar.</p>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-light text-dark border" id="contadorSeleccionados">0 seleccionados</span>
+            <button type="button" class="btn btn-sm btn-success" id="btnInventariarSeleccionados" disabled>
+                {{ icono('caja-abajo') }} Inventariar seleccionados
+            </button>
+        </div>
+    </div>
+
+    <div class="tabla-scroll">
+        <table class="table table-hover tabla-consolidado-pro" id="tablaConsolidado">
+            <thead>
+                <tr>
+                    <th class="col-cons-chk">
+                        <input type="checkbox" class="form-check-input" id="chkTodos" title="Seleccionar todos los listos" aria-label="Seleccionar todos los listos">
+                    </th>
+                    <th class="col-cons-estado">Estado</th>
+                    <th class="col-cons-desc">Descripción estandarizada</th>
+                    <th>Proveedor</th>
+                    <th>Ref. proveedor</th>
+                    <th>Ref. repuesto</th>
+                    <th>Equivalente</th>
+                    <th>Marca artículo</th>
+                    <th>Marca vehículo</th>
+                    <th>Modelo</th>
+                    <th>Lado</th>
+                    <th>Medida</th>
+                    <th>Grupo</th>
+                    <th>Inventariado</th>
+                    <th>Código de barras</th>
+                    <th class="col-cons-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                    {% set estado = r[13] %}
+                    {% set es_listo = estado == 'LISTO_INVENTARIAR' %}
+                    {% set es_inventariado = estado == 'INVENTARIADO' %}
+                    <tr
+                        data-id="{{ r[0] }}"
+                        data-estado="{{ estado }}"
+                        data-descripcion="{{ r[5] or '' }}"
+                        data-descripcion-estandarizada="{{ r[6] or '' }}"
+                        data-referencia-proveedor="{{ r[2] or '' }}"
+                        data-referencia-repuesto="{{ r[3] or '' }}"
+                        data-equivalente="{{ r[4] or '' }}"
+                        data-marca="{{ r[7] or '' }}"
+                        data-carro="{{ r[8] or '' }}"
+                        data-modelo="{{ r[9] or '' }}"
+                        data-lado="{{ r[10] or '' }}"
+                        data-medida="{{ r[11] or '' }}"
+                        data-grupo="{{ r[12] or '' }}"
+                    >
+                        <td class="col-cons-chk">
+                            <input type="checkbox" class="form-check-input chk-consolidado" value="{{ r[0] }}"
+                                   {% if not es_listo %}disabled{% endif %}
+                                   aria-label="Seleccionar {{ r[6] or r[5] or r[0] }}">
+                        </td>
+
+                        <td class="col-cons-estado">
+                            <span class="badge badge-estado badge-estado-{{ estado|lower|replace('_', '-') }}">{{ estado }}</span>
+                        </td>
+
+                        <td class="col-cons-desc">
+                            <span class="texto-truncado" title="{{ r[6] or r[5] or '' }}">{{ r[6] or r[5] or '—' }}</span>
+                        </td>
+
+                        <td><span class="texto-truncado" title="{{ r[1] or '' }}">{{ r[1] or '—' }}</span></td>
+                        <td><span class="texto-truncado" title="{{ r[2] or '' }}">{{ r[2] or '—' }}</span></td>
+                        <td><span class="texto-truncado" title="{{ r[3] or '' }}">{{ r[3] or '—' }}</span></td>
+                        <td><span class="texto-truncado" title="{{ r[4] or '' }}">{{ r[4] or '—' }}</span></td>
+                        <td><span class="texto-truncado" title="{{ r[7] or '' }}">{{ r[7] or '—' }}</span></td>
+                        <td><span class="texto-truncado" title="{{ r[8] or '' }}">{{ r[8] or '—' }}</span></td>
+                        <td><span class="texto-truncado" title="{{ r[9] or '' }}">{{ r[9] or '—' }}</span></td>
+                        <td>{{ r[10] or '—' }}</td>
+                        <td>{{ r[11] or '—' }}</td>
+                        <td><span class="texto-truncado" title="{{ r[12] or '' }}">{{ r[12] or '—' }}</span></td>
+                        <td>
+                            {% if es_inventariado %}
+                                <span class="badge bg-success" title="Inventariado el {{ r[15] or '' }} por {{ r[16] or '' }}">Sí</span>
+                            {% else %}
+                                <span class="badge bg-secondary">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if r[19] %}
+                                <span class="texto-truncado fw-semibold" title="{{ r[19] }}">{{ r[19] }}</span>
+                            {% else %}
+                                <span class="dato-pendiente" title="Se genera al inventariar.">—</span>
+                            {% endif %}
+                        </td>
+
+                        <td class="col-cons-acciones">
+                            <button type="button" class="btn btn-sm btn-outline-primary btn-editar-consolidado" data-id="{{ r[0] }}" title="Editar">
+                                {{ icono('editar') }} Editar
+                            </button>
+                            {% if es_listo %}
+                                <button type="button" class="btn btn-sm btn-outline-success btn-inventariar-consolidado" data-id="{{ r[0] }}" title="Inventariar">
+                                    {{ icono('caja-abajo') }} Inventariar
+                                </button>
+                            {% elif es_inventariado %}
+                                <button type="button" class="btn btn-sm btn-outline-secondary btn-reimprimir-consolidado" data-id="{{ r[0] }}" title="Reimprimir etiqueta">
+                                    {{ icono('pdf') }} Reimprimir
+                                </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="16" class="text-center text-muted py-5">
+                            No hay artículos que coincidan con los filtros.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <nav aria-label="Paginación de consolidado">
+            <ul class="pagination mb-0">
+                <li class="page-item {{ 'disabled' if pagina <= 1 else '' }}">
+                    <a class="page-link" href="{{ url_for('consolidado.consolidado_home', pagina=pagina - 1, **filtros) if pagina > 1 else '#' }}">Anterior</a>
+                </li>
+                {% set inicio = [1, pagina - 2]|max %}
+                {% set fin = [total_paginas, pagina + 2]|min %}
+                {% for p in range(inicio, fin + 1) %}
+                    <li class="page-item {{ 'active' if p == pagina else '' }}">
+                        <a class="page-link" href="{{ url_for('consolidado.consolidado_home', pagina=p, **filtros) }}">{{ p }}</a>
+                    </li>
+                {% endfor %}
+                <li class="page-item {{ 'disabled' if pagina >= total_paginas else '' }}">
+                    <a class="page-link" href="{{ url_for('consolidado.consolidado_home', pagina=pagina + 1, **filtros) if pagina < total_paginas else '#' }}">Siguiente</a>
+                </li>
+            </ul>
+        </nav>
+        <div class="small text-muted">Página {{ pagina }} de {{ total_paginas }} · {{ total }} registros</div>
+    </div>
+</div>
+
+<!-- Modal: importar desde facturas -->
+<div class="modal fade" id="modalImportar" tabindex="-1" aria-labelledby="modalImportarLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 d-flex align-items-center gap-2" id="modalImportarLabel">
+                    {{ icono('base-datos') }} Importar artículos desde facturas
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+
+            <form id="formImportar">
+                <div class="modal-body">
+                    <div class="alert alert-info d-flex gap-2 small mb-3" role="alert">
+                        {{ icono('info') }}
+                        <div>La importación crea o actualiza Consolidado y relaciona las líneas de factura. No crea artículos en Inventario, no genera códigos y no modifica cantidades.</div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="importFechaInicial">Fecha inicial</label>
+                            <input type="date" class="form-control" id="importFechaInicial" name="fecha_inicial" required>
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="importFechaFinal">Fecha final</label>
+                            <input type="date" class="form-control" id="importFechaFinal" name="fecha_final" required>
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="importProveedor">Proveedor (opcional)</label>
+                            <select class="form-select" id="importProveedor" name="proveedor">
+                                <option value="">Todos los proveedores</option>
+                                {% for proveedor in proveedores %}
+                                    <option value="{{ proveedor }}">{{ proveedor }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 col-sm-6 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="importSoloNuevas" name="solo_no_procesadas" value="1" checked>
+                                <label class="form-check-label" for="importSoloNuevas">Incluir solo líneas aún no procesadas</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="previewImportacion" class="mt-4 d-none"></div>
+                </div>
+
+                <div class="modal-footer flex-wrap gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-outline-primary" id="btnPreviewImportacion">
+                        {{ icono('ojo') }} Vista previa
+                    </button>
+                    <button type="button" class="btn btn-primary" id="btnConfirmarImportacion" disabled>
+                        {{ icono('check') }} Confirmar importación
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: editar -->
+<div class="modal fade" id="modalEditarConsolidado" tabindex="-1" aria-labelledby="modalEditarConsolidadoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 d-flex align-items-center gap-2" id="modalEditarConsolidadoLabel">
+                    {{ icono('editar') }} Editar artículo del consolidado
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+
+            <form id="formEditarConsolidado">
+                <input type="hidden" id="editConsolidadoId">
+                <div class="modal-body">
+                    <div class="alert alert-warning d-none" id="alertaEditar" role="alert"></div>
+
+                    <h3 class="modal-seccion-titulo">{{ icono('info') }} Descripción y referencias</h3>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            <label class="form-label" for="editDescripcion">Descripción original</label>
+                            <input class="form-control" type="text" id="editDescripcion" name="descripcion" required>
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="editRefProveedor">Referencia proveedor</label>
+                            <input class="form-control" type="text" id="editRefProveedor" name="referenciaProveedor" required>
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="editRefRepuesto">Referencia repuesto</label>
+                            <input class="form-control" type="text" id="editRefRepuesto" name="referenciaRepuesto">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="editEquivalente">Equivalente</label>
+                            <input class="form-control" type="text" id="editEquivalente" name="equivalente">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="editMedida">Medida</label>
+                            <input class="form-control" type="text" id="editMedida" name="medida">
+                        </div>
+                    </div>
+
+                    <h3 class="modal-seccion-titulo">{{ icono('etiqueta') }} Clasificación</h3>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-sm-6 col-lg-4">
+                            <label class="form-label" for="editMarca">Marca del artículo</label>
+                            <input class="form-control" type="text" id="editMarca" name="marca">
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-4">
+                            <label class="form-label" for="editCarro">Marca del vehículo</label>
+                            <input class="form-control" type="text" id="editCarro" name="carro">
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-4">
+                            <label class="form-label" for="editModelo">Modelo</label>
+                            <input class="form-control" type="text" id="editModelo" name="modelo">
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-4">
+                            <label class="form-label" for="editLado">Lado</label>
+                            <input class="form-control" type="text" id="editLado" name="lado">
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-4">
+                            <label class="form-label" for="editGrupo">Grupo</label>
+                            <input class="form-control" type="text" id="editGrupo" name="grupo">
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border small mb-0">
+                        Al guardar se validan duplicados, se vuelve a estandarizar y se recalcula el estado.
+                        Inventario no se modifica automáticamente.
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success" id="btnGuardarConsolidado">Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: inventariar -->
+<div class="modal fade" id="modalInventariar" tabindex="-1" aria-labelledby="modalInventariarLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 d-flex align-items-center gap-2" id="modalInventariarLabel">
+                    {{ icono('caja-abajo') }} Inventariar artículos
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+
+            <form id="formInventariar">
+                <div class="modal-body">
+                    <div class="alert alert-info small" role="status" id="resumenInventariar"></div>
+                    <p class="small text-muted">
+                        Inventariar asigna identidad y código de barras. No modifica cantidades ni marca el artículo como contado.
+                    </p>
+
+                    <div class="row g-3">
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="invUbicacion">Ubicación</label>
+                            <input class="form-control" type="text" id="invUbicacion" name="ubicacion" placeholder="Piso / pasillo (opcional)">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="invEstante">Estante</label>
+                            <input class="form-control" type="text" id="invEstante" name="estante" placeholder="Ej. E-2 (opcional)">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="invGrupo">Grupo</label>
+                            <input class="form-control" type="text" id="invGrupo" name="grupo">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="invCosto">Costo</label>
+                            <input class="form-control" type="number" id="invCosto" name="costo" min="0" step="1">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="invPrecio">Precio de venta</label>
+                            <input class="form-control" type="number" id="invPrecio" name="precio" min="0" step="1">
+                        </div>
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label" for="invTemplate">Etiqueta BarTender</label>
+                            <select class="form-select" id="invTemplate" name="template_id">
+                                <option value="">No imprimir ahora</option>
+                                {% for plantilla in plantillas %}
+                                    <option value="{{ plantilla[0] }}">{{ plantilla[1] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border small mt-3 mb-0">
+                        Si BarTender falla, el artículo queda inventariado y podrá reimprimirse sin crear otro código.
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success" id="btnConfirmarInventariar">
+                        {{ icono('check') }} Inventariar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: reimprimir -->
+<div class="modal fade" id="modalReimprimir" tabindex="-1" aria-labelledby="modalReimprimirLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 d-flex align-items-center gap-2" id="modalReimprimirLabel">
+                    {{ icono('pdf') }} Reimprimir etiqueta
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <form id="formReimprimir">
+                <div class="modal-body">
+                    <p class="small text-muted">Se reutiliza el código y el artículo existente; no se vuelve a inventariar.</p>
+                    <label class="form-label" for="reimpTemplate">Etiqueta BarTender</label>
+                    <select class="form-select" id="reimpTemplate" name="template_id" required>
+                        <option value="">-- Selecciona una etiqueta --</option>
+                        {% for plantilla in plantillas %}
+                            <option value="{{ plantilla[0] }}">{{ plantilla[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Reimprimir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modalImportar = new bootstrap.Modal(document.getElementById('modalImportar'));
+    const modalEditar = new bootstrap.Modal(document.getElementById('modalEditarConsolidado'));
+    const modalInventariar = new bootstrap.Modal(document.getElementById('modalInventariar'));
+    const modalReimprimir = new bootstrap.Modal(document.getElementById('modalReimprimir'));
+
+    let idsInventariar = [];
+    let idReimprimir = null;
+
+    function escapar(valor) {
+        return String(valor == null ? '' : valor)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function hoy() {
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    document.getElementById('btnIrFiltros').addEventListener('click', function () {
+        document.getElementById('panelFiltros').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    // ---------------- Importación ----------------
+    document.getElementById('importFechaInicial').value = hoy();
+    document.getElementById('importFechaFinal').value = hoy();
+
+    function payloadImportacion() {
+        return {
+            fecha_inicial: document.getElementById('importFechaInicial').value,
+            fecha_final: document.getElementById('importFechaFinal').value,
+            proveedor: document.getElementById('importProveedor').value,
+            solo_no_procesadas: document.getElementById('importSoloNuevas').checked ? 1 : 0
+        };
+    }
+
+    function tarjeta(titulo, valor, clase) {
+        return `<div class="col-6 col-lg-3">
+            <div class="consola-preview-item ${clase || ''}">
+                <span>${escapar(titulo)}</span>
+                <strong>${escapar(valor)}</strong>
+            </div>
+        </div>`;
+    }
+
+    function renderPreview(data) {
+        const contenedor = document.getElementById('previewImportacion');
+        if (!data.ok) {
+            contenedor.innerHTML = `<div class="alert alert-danger">${escapar(data.error || 'No se pudo generar la vista previa.')}</div>`;
+            contenedor.classList.remove('d-none');
+            return;
+        }
+
+        let html = '<div class="row g-2">';
+        html += tarjeta('Facturas encontradas', data.facturas_encontradas);
+        html += tarjeta('Líneas encontradas', data.lineas_encontradas);
+        html += tarjeta('Nuevos', data.nuevos, 'text-success');
+        html += tarjeta('Ya existentes', data.existentes);
+        html += tarjeta('Sin referencia', data.sin_referencia, 'text-danger');
+        html += tarjeta('Coincidencias ambiguas', data.ambiguas, 'text-danger');
+        html += tarjeta('Bloqueadas / incompletas', data.bloqueadas, 'text-warning');
+        html += tarjeta('Ya procesadas', data.omitidas);
+        html += '</div>';
+
+        if (data.advertencias && data.advertencias.length) {
+            html += '<div class="alert alert-warning small mt-3 mb-0"><strong>Advertencias de equivalencia:</strong><ul class="mb-0 ps-3">';
+            data.advertencias.slice(0, 15).forEach(function (a) {
+                html += `<li>${escapar(a)}</li>`;
+            });
+            html += '</ul></div>';
+        }
+
+        if (data.detalle && data.detalle.length) {
+            html += '<details class="mt-3"><summary class="small text-muted">Ver líneas bloqueadas (' + data.detalle.length + ')</summary><ul class="small mb-0 ps-3">';
+            data.detalle.slice(0, 30).forEach(function (d) {
+                html += `<li>Factura ${escapar(d.id_factura)} · ${escapar(d.referencia || 'sin referencia')}: ${escapar(d.motivo)}</li>`;
+            });
+            html += '</ul></details>';
+        }
+
+        contenedor.innerHTML = html;
+        contenedor.classList.remove('d-none');
+
+        const boton = document.getElementById('btnConfirmarImportacion');
+        boton.disabled = (data.nuevos + data.existentes) === 0;
+    }
+
+    document.getElementById('btnPreviewImportacion').addEventListener('click', async function () {
+        const boton = this;
+        boton.disabled = true;
+        try {
+            const respuesta = await fetch('/consolidado/importar/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payloadImportacion())
+            });
+            renderPreview(await respuesta.json());
+        } catch (error) {
+            renderPreview({ ok: false, error: error.message });
+        } finally {
+            boton.disabled = false;
+        }
+    });
+
+    document.getElementById('btnConfirmarImportacion').addEventListener('click', async function () {
+        const boton = this;
+        boton.disabled = true;
+        try {
+            const respuesta = await fetch('/consolidado/importar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payloadImportacion())
+            });
+            const data = await respuesta.json();
+            if (!data.ok) {
+                alert('Error: ' + (data.error || 'No se pudo importar.'));
+                return;
+            }
+            alert(
+                'Importación completada.\n' +
+                'Creados: ' + data.creados + '\n' +
+                'Actualizados: ' + data.actualizados + '\n' +
+                'Vinculados: ' + data.vinculados + '\n' +
+                'Omitidos: ' + data.omitidas + '\n' +
+                'Bloqueados: ' + data.bloqueadas + '\n' +
+                'Errores: ' + data.errores
+            );
+            window.location.reload();
+        } catch (error) {
+            alert('Error de conexión: ' + error.message);
+        } finally {
+            boton.disabled = false;
+        }
+    });
+
+    // ---------------- Selección ----------------
+    const checks = Array.from(document.querySelectorAll('.chk-consolidado:not(:disabled)'));
+
+    function actualizarSeleccion() {
+        const seleccionados = checks.filter(function (c) { return c.checked; });
+        document.getElementById('contadorSeleccionados').textContent = seleccionados.length + ' seleccionados';
+        document.getElementById('btnInventariarSeleccionados').disabled = seleccionados.length === 0;
+    }
+
+    checks.forEach(function (check) {
+        check.addEventListener('change', actualizarSeleccion);
+    });
+
+    document.getElementById('chkTodos').addEventListener('change', function () {
+        checks.forEach(function (check) { check.checked = this.checked; }, this);
+        actualizarSeleccion();
+    });
+
+    function abrirInventariar(ids) {
+        idsInventariar = ids;
+        document.getElementById('resumenInventariar').textContent =
+            ids.length === 1 ? 'Se inventariará 1 registro.' : 'Se inventariarán ' + ids.length + ' registros.';
+        modalInventariar.show();
+    }
+
+    document.getElementById('btnInventariarSeleccionados').addEventListener('click', function () {
+        abrirInventariar(checks.filter(function (c) { return c.checked; }).map(function (c) { return c.value; }));
+    });
+
+    document.querySelectorAll('.btn-inventariar-consolidado').forEach(function (boton) {
+        boton.addEventListener('click', function () {
+            abrirInventariar([boton.dataset.id]);
+        });
+    });
+
+    document.getElementById('formInventariar').addEventListener('submit', async function (evento) {
+        evento.preventDefault();
+        const boton = document.getElementById('btnConfirmarInventariar');
+        boton.disabled = true;
+        const payload = {
+            ids: idsInventariar,
+            ubicacion: document.getElementById('invUbicacion').value,
+            estante: document.getElementById('invEstante').value,
+            grupo: document.getElementById('invGrupo').value,
+            costo: document.getElementById('invCosto').value,
+            precio: document.getElementById('invPrecio').value,
+            template_id: document.getElementById('invTemplate').value
+        };
+        try {
+            const respuesta = await fetch('/consolidado/inventariar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await respuesta.json();
+            if (!data.ok && !data.inventariados) {
+                alert('Error: ' + (data.error || 'No se pudo inventariar.'));
+                return;
+            }
+            let mensaje =
+                'Inventariados: ' + data.inventariados + '\n' +
+                'Reutilizados: ' + data.reutilizados + '\n' +
+                'Bloqueados: ' + data.bloqueados + '\n' +
+                'Omitidos: ' + data.omitidos + '\n' +
+                'Errores: ' + data.errores;
+            if (data.errores_impresion) {
+                mensaje += '\n\nEl artículo quedó inventariado, pero falló la impresión: ' + (data.error_impresion || '');
+                mensaje += '\nPuede reimprimir sin generar otro código.';
+            }
+            alert(mensaje);
+            window.location.reload();
+        } catch (error) {
+            alert('Error de conexión: ' + error.message);
+        } finally {
+            boton.disabled = false;
+        }
+    });
+
+    // ---------------- Reimpresión ----------------
+    document.querySelectorAll('.btn-reimprimir-consolidado').forEach(function (boton) {
+        boton.addEventListener('click', function () {
+            idReimprimir = boton.dataset.id;
+            modalReimprimir.show();
+        });
+    });
+
+    document.getElementById('formReimprimir').addEventListener('submit', async function (evento) {
+        evento.preventDefault();
+        try {
+            const respuesta = await fetch('/consolidado/reimprimir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ids: [idReimprimir],
+                    template_id: document.getElementById('reimpTemplate').value
+                })
+            });
+            const data = await respuesta.json();
+            if (!data.ok) {
+                alert('Error: ' + (data.error || 'No se pudo reimprimir.'));
+                return;
+            }
+            alert('Etiqueta reenviada a BarTender.');
+            modalReimprimir.hide();
+        } catch (error) {
+            alert('Error de conexión: ' + error.message);
+        }
+    });
+
+    // ---------------- Edición ----------------
+    document.querySelectorAll('.btn-editar-consolidado').forEach(function (boton) {
+        boton.addEventListener('click', function () {
+            const fila = boton.closest('tr');
+            const d = fila.dataset;
+            document.getElementById('editConsolidadoId').value = d.id;
+            document.getElementById('editDescripcion').value = d.descripcion || '';
+            document.getElementById('editRefProveedor').value = d.referenciaProveedor || '';
+            document.getElementById('editRefRepuesto').value = d.referenciaRepuesto || '';
+            document.getElementById('editEquivalente').value = d.equivalente || '';
+            document.getElementById('editMedida').value = d.medida || '';
+            document.getElementById('editMarca').value = d.marca || '';
+            document.getElementById('editCarro').value = d.carro || '';
+            document.getElementById('editModelo').value = d.modelo || '';
+            document.getElementById('editLado').value = d.lado || '';
+            document.getElementById('editGrupo').value = d.grupo || '';
+            document.getElementById('alertaEditar').classList.add('d-none');
+            modalEditar.show();
+        });
+    });
+
+    document.getElementById('formEditarConsolidado').addEventListener('submit', async function (evento) {
+        evento.preventDefault();
+        const id = document.getElementById('editConsolidadoId').value;
+        const payload = {
+            descripcion: document.getElementById('editDescripcion').value,
+            referenciaProveedor: document.getElementById('editRefProveedor').value,
+            referenciaRepuesto: document.getElementById('editRefRepuesto').value,
+            equivalente: document.getElementById('editEquivalente').value,
+            medida: document.getElementById('editMedida').value,
+            marca: document.getElementById('editMarca').value,
+            carro: document.getElementById('editCarro').value,
+            modelo: document.getElementById('editModelo').value,
+            lado: document.getElementById('editLado').value,
+            grupo: document.getElementById('editGrupo').value
+        };
+
+        try {
+            const respuesta = await fetch('/consolidado/editar/' + id, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await respuesta.json();
+            if (!data.ok) {
+                const alerta = document.getElementById('alertaEditar');
+                alerta.textContent = data.error || 'No se pudo guardar.';
+                alerta.classList.remove('d-none');
+                return;
+            }
+            window.location.reload();
+        } catch (error) {
+            const alerta = document.getElementById('alertaEditar');
+            alerta.textContent = 'Error de conexión: ' + error.message;
+            alerta.classList.remove('d-none');
+        }
+    });
+
+    actualizarSeleccion();
+});
+</script>
+
+{% endblock %}

@@ -6,6 +6,8 @@ from ion.routes import ion_bp
 from facturas.routes import facturas_bp
 from inventario.routes import inventario_bp
 from grupos.routes import grupo_bp
+from consolidado.routes import consolidado_bp
+from inventario import respaldo
 import db
 import migraciones
 import os
@@ -22,6 +24,7 @@ app.register_blueprint(ion_bp)
 app.register_blueprint(facturas_bp)
 app.register_blueprint(inventario_bp)
 app.register_blueprint(grupo_bp)
+app.register_blueprint(consolidado_bp)
 
 # Ruta absoluta del directorio 'bin/codigos'
 RUTA_CODIGOS = os.path.join(os.path.dirname(__file__), 'bin', 'codigos')
@@ -255,6 +258,18 @@ def actualizar_consolidado(conn, df):
 
         if clave not in bd:
 
+            desc_estado = normalizar_valor(
+                datos.get("descripcionEstandarizada")
+            )
+            estado_nuevo = (
+                "LISTO_INVENTARIAR"
+                if desc_estado
+                and len(str(desc_estado).strip()) >= 3
+                and referencia
+                and referencia.upper() != "SIN_REFERENCIA"
+                else "PENDIENTE_REVISION"
+            )
+
             cursor.execute("""
                 INSERT INTO consolidado (
                     referenciaProveedor,
@@ -275,11 +290,12 @@ def actualizar_consolidado(conn, df):
                     modelo,
                     otros,
                     medida,
-                    descripcionEstandarizada
+                    descripcionEstandarizada,
+                    estadoConsolidado
                 )
                 VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             """, (
                 referencia,
@@ -300,7 +316,8 @@ def actualizar_consolidado(conn, df):
                 datos["modelo"],
                 datos["otros"],
                 datos["medida"],
-                datos["descripcionEstandarizada"]
+                datos["descripcionEstandarizada"],
+                estado_nuevo
             ))
 
             nuevos += 1
@@ -429,6 +446,8 @@ def actualizar_consolidado(conn, df):
     # ==========================================================
 
     conn.commit()
+
+    respaldo.actualizar_respaldo_si_posible(conn=conn)
 
     # ==========================================================
     # RESULTADO

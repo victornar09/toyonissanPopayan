@@ -1,0 +1,446 @@
+{% extends "layouts/base.html" %}
+
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
+{% block title %}Conteo físico · {{ sesion.nombre }}{% endblock %}
+
+{% block content %}
+{% call encabezado_pagina(
+    'Conteo físico',
+    sesion.nombre,
+    'escaner',
+    [('Inicio', url_for('index')), ('Inventario', url_for('inventario.inventario_home')), ('Conteo', None)]
+) %}
+    <a href="{{ url_for('inventario.inventario_home') }}" class="btn btn-outline-secondary">
+        {{ icono('inventario') }} Volver al inventario
+    </a>
+    {% if sesion.estado == 'ABIERTA' %}
+        <button type="button" class="btn btn-outline-danger" id="btnDeshacer">{{ icono('limpiar') }} Deshacer última lectura</button>
+        <button type="button" class="btn btn-outline-warning" id="btnPausar">{{ icono('info') }} Pausar</button>
+        <button type="button" class="btn btn-success" id="btnFinalizar">{{ icono('check') }} Finalizar conteo</button>
+    {% elif sesion.estado == 'PAUSADA' %}
+        <button type="button" class="btn btn-outline-danger" id="btnDeshacer">{{ icono('limpiar') }} Deshacer última lectura</button>
+        <button type="button" class="btn btn-outline-success" id="btnReanudar">{{ icono('escaner') }} Reanudar</button>
+        <button type="button" class="btn btn-success" id="btnFinalizar">{{ icono('check') }} Finalizar conteo</button>
+    {% elif sesion.estado == 'FINALIZADA' %}
+        <button type="button" class="btn btn-success" id="btnAplicar">{{ icono('check') }} Aplicar conteo</button>
+    {% endif %}
+{% endcall %}
+
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                    <div>
+                        <span class="text-muted small d-block">Ubicación / estante</span>
+                        <strong class="h5">{{ sesion.ubicacion or sesion.estante or 'Sin ubicación' }}</strong>
+                    </div>
+                    <span class="badge badge-sesion badge-sesion-{{ sesion.estado|lower }}">{{ sesion.estado }}</span>
+                </div>
+                <div class="row g-2 mt-3 small">
+                    <div class="col-6 col-md-4"><span class="text-muted d-block">Responsable</span>{{ sesion.responsable or '—' }}</div>
+                    <div class="col-6 col-md-4"><span class="text-muted d-block">Inicio</span>{{ sesion.fechaInicio or '—' }}</div>
+                    <div class="col-6 col-md-4"><span class="text-muted d-block">Fin</span>{{ sesion.fechaFin or '—' }}</div>
+                    {% if sesion.observaciones %}
+                    <div class="col-12"><span class="text-muted d-block">Observaciones</span>{{ sesion.observaciones }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-stat">
+            <div class="card-body py-3">
+                <span class="inv-stat-label">Lecturas</span>
+                <strong class="inv-stat-valor" id="statLecturas">{{ resumen.totalLecturas or 0 }}</strong>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-1">
+        <div class="card border-0 shadow-sm h-100 inv-stat">
+            <div class="card-body py-3">
+                <span class="inv-stat-label">Productos</span>
+                <strong class="inv-stat-valor" id="statProductos">{{ resumen.productos or 0 }}</strong>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-2">
+        <div class="card border-0 shadow-sm h-100 inv-stat inv-stat-stock">
+            <div class="card-body py-3">
+                <span class="inv-stat-label">Unidades contadas</span>
+                <strong class="inv-stat-valor" id="statUnidades">{{ resumen.cantidadContada or 0 }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if sesion.estado == 'APLICADA' %}
+    <div class="alert alert-success d-flex gap-2" role="alert">
+        {{ icono('check') }}
+        <div>Este conteo ya fue aplicado el {{ sesion.fechaAplicacion or '' }} por {{ sesion.usuarioAplicacion or '' }}. No puede aplicarse dos veces.</div>
+    </div>
+{% endif %}
+
+{% if sesion.estado in ['ABIERTA', 'PAUSADA'] %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form id="formEscaneo" autocomplete="off">
+            <label for="campoEscaneo" class="form-label fw-semibold">
+                {{ icono('escaner') }} Escanea un código de barras
+            </label>
+            <div class="input-group input-group-lg">
+                <span class="input-group-text">{{ icono('escaner') }}</span>
+                <input type="text" class="form-control" id="campoEscaneo"
+                       inputmode="numeric" autocomplete="off" autofocus
+                       placeholder="El campo permanece enfocado para la siguiente lectura"
+                       {% if sesion.estado == 'PAUSADA' %}disabled{% endif %}>
+                <button type="submit" class="btn btn-primary" {% if sesion.estado == 'PAUSADA' %}disabled{% endif %}>Registrar</button>
+            </div>
+            <div class="form-text" id="ayudaEscaneo">
+                {% if sesion.estado == 'PAUSADA' %}
+                    Sesión pausada. Reanuda para continuar leyendo.
+                {% else %}
+                    Cada lectura terminada en Enter suma una unidad a la sesión. La cantidad oficial no cambia hasta aplicar el conteo.
+                {% endif %}
+            </div>
+        </form>
+
+        <div id="alertaLectura" class="alert d-none mt-3 mb-0" role="alert"></div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-12 col-lg-7">
+                <div class="border rounded p-3 h-100" id="panelUltimo">
+                    <span class="text-muted small d-block mb-1">Último artículo leído</span>
+                    <div id="ultimoContenido" class="text-muted">
+                        {% if ultimaLectura %}
+                            <strong>{{ ultimaLectura.descripcion or ultimaLectura.codigoBarras }}</strong>
+                            <div class="small">Código: {{ ultimaLectura.codigoBarras }} · Ref.: {{ ultimaLectura.referencia or '—' }}</div>                        {% else %}
+                            Aún no hay lecturas en esta sesión.
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-5">
+                <div class="border rounded p-3 h-100">
+                    <span class="text-muted small d-block mb-2">¿Código no reconocido o sin etiqueta?</span>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="busquedaManual" placeholder="Buscar por descripción o referencia">
+                        <button type="button" class="btn btn-outline-secondary" id="btnBuscarManual">Buscar</button>
+                    </div>
+                    <div id="resultadosManual" class="mt-2 small"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h2 class="h6 mb-0 d-flex align-items-center gap-2">{{ icono('inventario') }} Artículos escaneados</h2>
+        <span class="badge bg-light text-dark border" id="contadorDetalle">{{ detalle|length }} producto{{ '' if detalle|length == 1 else 's' }}</span>
+    </div>
+    <div class="tabla-scroll">
+        <table class="table table-hover mb-0 tabla-conteo">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Referencia</th>
+                    <th class="text-center">Registrada</th>
+                    <th class="text-center">Contada</th>
+                    <th class="text-center">Diferencia</th>
+                    <th>Ubicación</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody id="tablaDetalle">
+                {% for d in detalle %}
+                    <tr data-id-inventario="{{ d.idInventarioUnico }}">
+                        <td class="fw-semibold">{{ d.codigoBarras or '—' }}</td>
+                        <td>{{ d.descripcionEstandarizada or d.descripcionArticulo or '—' }}</td>
+                        <td>{{ d.referenciaArticulo or '—' }}</td>
+                        <td class="text-center">{{ d.cantidadRegistrada or 0 }}</td>
+                        <td class="text-center fw-semibold celda-contada">{{ d.cantidadContada or 0 }}</td>
+                        <td class="text-center celda-diferencia">{{ d.diferencia or 0 }}</td>
+                        <td>{{ d.ubicacionRegistrada or '—' }}</td>
+                        <td><span class="badge badge-resultado badge-resultado-{{ (d.estado or 'pendiente')|lower|replace('_', '-') }}">{{ d.estado }}</span></td>
+                    </tr>
+                {% else %}
+                    <tr id="filaVacia"><td colspan="8" class="text-center text-muted py-4">Todavía no hay artículos escaneados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if desconocidos %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h2 class="h6 mb-0 text-danger d-flex align-items-center gap-2">{{ icono('alerta') }} Códigos no reconocidos</h2>
+    </div>
+    <div class="card-body py-2" id="listaDesconocidos">
+        {% for d in desconocidos %}
+            <span class="badge bg-danger me-1 mb-1">{{ d.codigoBarras }} · {{ d.lecturas }} lectura(s)</span>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="d-none" id="contenedorDesconocidos"></div>
+{% endif %}
+
+{% if sesion.estado in ['FINALIZADA', 'APLICADA'] %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h2 class="h5 mb-0 d-flex align-items-center gap-2">{{ icono('check') }} Resultado del conteo</h2>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Registrada</span><strong class="inv-stat-valor">{{ resumen.cantidadRegistrada or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Contada</span><strong class="inv-stat-valor">{{ resumen.cantidadContada or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Diferencia</span><strong class="inv-stat-valor">{{ resumen.diferencia or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Correctos</span><strong class="inv-stat-valor text-success">{{ resumen.correctos or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Faltantes</span><strong class="inv-stat-valor text-danger">{{ resumen.faltantes or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Sobrantes</span><strong class="inv-stat-valor text-warning">{{ resumen.sobrantes or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">No encontrados</span><strong class="inv-stat-valor">{{ resumen.noContados or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Otra ubicación</span><strong class="inv-stat-valor">{{ resumen.ubicacionesIncorrectas or 0 }}</strong></div></div>
+            <div class="col-6 col-lg-2"><div class="border rounded p-3 h-100"><span class="inv-stat-label">Desconocidos</span><strong class="inv-stat-valor">{{ desconocidos|length }}</strong></div></div>
+        </div>
+
+        <div class="alert alert-light border small mt-3 mb-0">
+            Al aplicar el conteo se actualizan las cantidades de los productos contados y se registran movimientos
+            <code>AJUSTE_CONTEO</code>. Los no encontrados y los de otra ubicación quedan para revisión y no se ajustan automáticamente.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const idSesion = {{ id_sesion|tojson }};
+    let estadoSesion = {{ sesion.estado|tojson }};
+    let bloqueado = false;
+
+    const campo = document.getElementById('campoEscaneo');
+    const alertaLectura = document.getElementById('alertaLectura');
+    const ultimoContenido = document.getElementById('ultimoContenido');
+
+    function escapar(valor) {
+        return String(valor == null ? '' : valor)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function nuevoToken() {
+        if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+        return Date.now() + '-' + Math.random().toString(16).slice(2);
+    }
+
+    function enfocar() {
+        if (campo && !campo.disabled) campo.focus();
+    }
+
+    function mostrarAlerta(mensaje, tipo) {
+        if (!alertaLectura) return;
+        alertaLectura.className = 'alert alert-' + (tipo || 'info') + ' mt-3 mb-0';
+        alertaLectura.textContent = mensaje;
+    }
+
+    function actualizarContadores(data) {
+        const lecturas = document.getElementById('statLecturas');
+        const productos = document.getElementById('statProductos');
+        const unidades = document.getElementById('statUnidades');
+        if (lecturas && data.totalLecturas !== undefined) lecturas.textContent = data.totalLecturas;
+        if (productos && data.totalProductos !== undefined) productos.textContent = data.totalProductos;
+        if (unidades && data.totalUnidades !== undefined) unidades.textContent = data.totalUnidades;
+    }
+
+    function actualizarFila(articulo, contada) {
+        const cuerpo = document.getElementById('tablaDetalle');
+        if (!cuerpo) return;
+        const filaVacia = document.getElementById('filaVacia');
+        if (filaVacia) filaVacia.remove();
+
+        let fila = cuerpo.querySelector(`tr[data-id-inventario="${articulo.idInventarioUnico}"]`);
+        if (!fila) {
+            fila = document.createElement('tr');
+            fila.dataset.idInventario = articulo.idInventarioUnico;
+            fila.innerHTML = `
+                <td class="fw-semibold">${escapar(articulo.codigoBarras)}</td>
+                <td>${escapar(articulo.descripcion)}</td>
+                <td>${escapar(articulo.referencia || '—')}</td>
+                <td class="text-center">${escapar(articulo.cantidadRegistrada ?? 0)}</td>
+                <td class="text-center fw-semibold celda-contada">0</td>
+                <td class="text-center celda-diferencia">0</td>
+                <td>${escapar(articulo.ubicacion || '—')}</td>
+                <td><span class="badge badge-resultado badge-resultado-pendiente">CONTADO</span></td>`;
+            cuerpo.appendChild(fila);
+        }
+        const celda = fila.querySelector('.celda-contada');
+        if (celda) celda.textContent = contada;
+        const contador = document.getElementById('contadorDetalle');
+        if (contador) contador.textContent = `${cuerpo.querySelectorAll('tr[data-id-inventario]').length} productos`;
+    }
+
+    async function leer(codigo) {
+        if (bloqueado) return;
+        bloqueado = true;
+        try {
+            const response = await fetch(`/inventario/conteo/${idSesion}/leer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ codigo: codigo, token: nuevoToken() })
+            });
+            const data = await response.json();
+
+            if (!data.ok) {
+                mostrarAlerta(data.error || 'No se pudo registrar la lectura.', 'danger');
+                return;
+            }
+
+            actualizarContadores(data);
+
+            if (!data.encontrado) {
+                mostrarAlerta(`Código no reconocido: ${data.codigoBarras}. No se creó ningún artículo.`, 'warning');
+                return;
+            }
+
+            const a = data.articulo;
+            if (ultimoContenido) {
+                ultimoContenido.innerHTML = `
+                    <strong>${escapar(a.descripcion)}</strong>
+                    <div class="small">Código: ${escapar(a.codigoBarras)} · Ref. proveedor: ${escapar(a.referenciaProveedor || a.referencia || '—')}</div>
+                    <div class="small">Ref. repuesto: ${escapar(a.referenciaRepuesto || '—')}</div>
+                    <div class="small">Vehículo: ${escapar(a.marcaVehiculo || '—')} ${escapar(a.modelo || '')} · Precio: $ ${escapar(a.precio || 0)}</div>
+                    <div class="small">Ubicación registrada: ${escapar(a.ubicacion || '—')} ${escapar(a.estante || '')}</div>
+                    <div class="mt-1">Contada en esta sesión: <strong>${escapar(data.cantidadContada)}</strong></div>`;
+            }
+
+            actualizarFila(a, data.cantidadContada);
+
+            if (data.tipo === 'UBICACION_INCORRECTA') {
+                mostrarAlerta(data.advertencia || 'El artículo pertenece a otra ubicación.', 'warning');
+            } else if (data.advertencia) {
+                mostrarAlerta(data.advertencia, 'info');
+            } else {
+                mostrarAlerta(`Lectura registrada: ${data.cantidadContada} unidad(es).`, 'success');
+            }
+        } catch (error) {
+            mostrarAlerta('Error de conexión: ' + error.message, 'danger');
+        } finally {
+            bloqueado = false;
+            if (campo) campo.value = '';
+            enfocar();
+        }
+    }
+
+    if (campo) {
+        document.getElementById('formEscaneo').addEventListener('submit', function (evento) {
+            evento.preventDefault();
+            const codigo = campo.value.trim();
+            if (!codigo) return;
+            leer(codigo);
+        });
+        if (!campo.disabled) campo.focus();
+    }
+
+    document.body.addEventListener('click', function () {
+        if (campo && !campo.disabled && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT') {
+            campo.focus();
+        }
+    });
+
+    const btnDeshacer = document.getElementById('btnDeshacer');
+    if (btnDeshacer) {
+        btnDeshacer.addEventListener('click', async function () {
+            if (!confirm('¿Deshacer la última lectura?')) return;
+            const response = await fetch(`/inventario/conteo/${idSesion}/deshacer`, { method: 'POST' });
+            const data = await response.json();
+            if (!data.ok) { alert(data.error || 'No se pudo deshacer.'); return; }
+            location.reload();
+        });
+    }
+
+    const btnPausar = document.getElementById('btnPausar');
+    if (btnPausar) {
+        btnPausar.addEventListener('click', async function () {
+            const response = await fetch(`/inventario/conteo/${idSesion}/pausar`, { method: 'POST' });
+            const data = await response.json();
+            if (!data.ok) { alert(data.error || 'No se pudo pausar.'); return; }
+            location.reload();
+        });
+    }
+
+    const btnReanudar = document.getElementById('btnReanudar');
+    if (btnReanudar) {
+        btnReanudar.addEventListener('click', async function () {
+            const response = await fetch(`/inventario/conteo/${idSesion}/reanudar`, { method: 'POST' });
+            const data = await response.json();
+            if (!data.ok) { alert(data.error || 'No se pudo reanudar.'); return; }
+            location.reload();
+        });
+    }
+
+    const btnFinalizar = document.getElementById('btnFinalizar');
+    if (btnFinalizar) {
+        btnFinalizar.addEventListener('click', async function () {
+            if (!confirm('¿Finalizar el conteo y calcular diferencias? La cantidad oficial aún no cambia.')) return;
+            const response = await fetch(`/inventario/conteo/${idSesion}/finalizar`, { method: 'POST' });
+            const data = await response.json();
+            if (!data.ok) { alert(data.error || 'No se pudo finalizar.'); return; }
+            location.reload();
+        });
+    }
+
+    const btnAplicar = document.getElementById('btnAplicar');
+    if (btnAplicar) {
+        btnAplicar.addEventListener('click', async function () {
+            if (!confirm('¿Aplicar el conteo? Se actualizarán las cantidades y se registrarán movimientos.')) return;
+            this.disabled = true;
+            const response = await fetch(`/inventario/conteo/${idSesion}/aplicar`, { method: 'POST' });
+            const data = await response.json();
+            if (!data.ok) {
+                alert(data.error || 'No se pudo aplicar.');
+                this.disabled = false;
+                return;
+            }
+            alert(`Conteo aplicado. Ajustados: ${data.ajustados}. Movimientos: ${data.movimientos}.`);
+            location.reload();
+        });
+    }
+
+    // Búsqueda manual para resolver un código no reconocido.
+    const btnBuscar = document.getElementById('btnBuscarManual');
+    if (btnBuscar) {
+        btnBuscar.addEventListener('click', async function () {
+            const texto = document.getElementById('busquedaManual').value.trim();
+            const contenedor = document.getElementById('resultadosManual');
+            if (!texto) { contenedor.innerHTML = '<span class="text-muted">Escribe una descripción o referencia.</span>'; return; }
+            const response = await fetch(`/inventario/conteo/${idSesion}/buscar?q=${encodeURIComponent(texto)}`);
+            const data = await response.json();
+            if (!data.ok || !data.articulos.length) {
+                contenedor.innerHTML = '<span class="text-muted">Sin coincidencias.</span>';
+                return;
+            }
+            contenedor.innerHTML = data.articulos.map(a => `
+                <button type="button" class="btn btn-sm btn-outline-secondary d-block w-100 text-start mb-1 btn-leer-manual"
+                        data-codigo="${escapar(a.codigoBarras || '')}">
+                    <strong>${escapar(a.codigoBarras || 'Sin código')}</strong> · ${escapar(a.descripcion)}
+                    <span class="text-muted">(${escapar(a.ubicacion || 'sin ubicación')})</span>
+                </button>`).join('');
+            contenedor.querySelectorAll('.btn-leer-manual').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    if (!btn.dataset.codigo) { alert('El artículo no tiene código de barras.'); return; }
+                    leer(btn.dataset.codigo);
+                });
+            });
+        });
+    }
+
+    enfocar();
+});
+</script>
+{% endblock %}

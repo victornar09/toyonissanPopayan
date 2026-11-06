@@ -19,6 +19,8 @@ from facturas.xml_utils import (
     obtener_invoice_root,
 )
 from procesamiento.consolidado import procesar_dataframe_pendientes
+from consolidado.servicio_inventario import obtener_o_crear_articulo
+from inventario import respaldo
 
 
 
@@ -818,44 +820,23 @@ def ver_factura(id_factura):
 
                     prov_use = datos_est.get('proveedor') or proveedor or ''
 
-                    cursor.execute("""
-                        INSERT INTO inventarioUnico (
-                            descripcion, descripcionClave, referencia, cantidad,
-                            precioVenta, precioVentaCifrado, precioMaxDescuento,
-                            proveedor, fechaActualizacion, grupo
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(descripcionClave) DO UPDATE SET
-                            referencia = excluded.referencia,
-                            cantidad = inventarioUnico.cantidad + excluded.cantidad,
-                            precioVenta = excluded.precioVenta,
-                            precioVentaCifrado = excluded.precioVentaCifrado,
-                            precioMaxDescuento = excluded.precioMaxDescuento,
-                            proveedor = excluded.proveedor,
-                            fechaActualizacion = excluded.fechaActualizacion,
-                            grupo = excluded.grupo
-                    """, (
-                        descripcion_est,
-                        clave,
-                        referencia_use,
-                        cantidad,
-                        precio_venta,
-                        precio_cifrado,
-                        precio_max_desc,
-                        prov_use,
-                        fecha or datetime.now().strftime('%Y-%m-%d'),
-                        ''
-                    ))
-
-                    cursor.execute("""
-                        SELECT id
-                        FROM inventarioUnico
-                        WHERE descripcionClave = ?
-                    """, (clave,))
-                    row_inv = cursor.fetchone()
-                    if not row_inv:
+                    articulo = obtener_o_crear_articulo(
+                        conn,
+                        descripcion=descripcion_est,
+                        descripcion_clave=clave,
+                        referencia=referencia_use,
+                        proveedor=prov_use,
+                        precio_venta=precio_venta,
+                        precio_cifrado=precio_cifrado,
+                        precio_max_descuento=precio_max_desc,
+                        grupo='',
+                        fecha=fecha or datetime.now().strftime('%Y-%m-%d'),
+                        cantidad=cantidad,
+                        sumar_cantidad=True,
+                    )
+                    inventario_id = articulo['id']
+                    if not inventario_id:
                         raise Exception(f"No se pudo obtener inventarioUnico para {id_fact_item}")
-                    inventario_id = row_inv[0]
 
                     cursor.execute("""
                         UPDATE inventarioFacturas
@@ -902,6 +883,8 @@ def ver_factura(id_factura):
                     ruta_template = row_tpl[0]
                 elif ids_para_imprimir and not template_id:
                     raise Exception("Debe seleccionar una etiqueta BarTender")
+
+            respaldo.actualizar_respaldo_si_posible(ruta_db=ruta_db)
 
             # Fuera de transacción: imprimir solo si inventariado confirmado
             if datos_impresion and ruta_template:

@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS inventarioFacturas (
     valor_unitario REAL,
     referencia TEXT,
     inventariado BOOLEAN DEFAULT 0,
-    id_inventarioUnico INTEGER
+    id_inventarioUnico INTEGER,
+    id_consolidado INTEGER
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invf_llave
@@ -64,7 +65,16 @@ CREATE TABLE IF NOT EXISTS inventarioUnico (
     grupo TEXT,
     proveedor VARCHAR(200) NOT NULL,
     fechaActualizacion DATE NOT NULL,
-    idUbicacion INTEGER
+    idUbicacion INTEGER,
+    costo REAL,
+    ubicacion TEXT,
+    estante TEXT,
+    estadoEtiquetado TEXT NOT NULL DEFAULT 'PENDIENTE',
+    estadoConteo TEXT NOT NULL DEFAULT 'SIN_CONTAR',
+    cantidadFisica INTEGER,
+    fechaUltimoConteo DATETIME,
+    stockMinimo INTEGER DEFAULT 0,
+    fechaCreacion DATETIME
 );
 
 -- Identificador lógico del producto: texto normalizado (sin tildes,
@@ -81,6 +91,85 @@ BEGIN
     SET codigoBarras = printf('%08d', NEW.id)
     WHERE id = NEW.id;
 END;
+
+CREATE TABLE IF NOT EXISTS sesionConteo (
+    idSesion INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    responsable TEXT,
+    fechaInicio DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fechaFin DATETIME,
+    idUbicacion INTEGER,
+    ubicacion TEXT,
+    estante TEXT,
+    estado TEXT NOT NULL DEFAULT 'ABIERTA',
+    observaciones TEXT,
+    usuarioCreacion TEXT,
+    fechaCreacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usuarioAplicacion TEXT,
+    fechaAplicacion DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_sesion_conteo_estado
+ON sesionConteo (estado);
+
+CREATE TABLE IF NOT EXISTS detalleConteo (
+    idDetalle INTEGER PRIMARY KEY AUTOINCREMENT,
+    idSesion INTEGER NOT NULL,
+    idInventarioUnico INTEGER NOT NULL,
+    codigoBarras TEXT,
+    cantidadRegistrada INTEGER NOT NULL DEFAULT 0,
+    cantidadContada INTEGER NOT NULL DEFAULT 0,
+    diferencia INTEGER NOT NULL DEFAULT 0,
+    estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+    ubicacionRegistrada TEXT,
+    ubicacionSesion TEXT,
+    observacion TEXT,
+    UNIQUE (idSesion, idInventarioUnico)
+);
+
+CREATE INDEX IF NOT EXISTS idx_detalle_conteo_sesion
+ON detalleConteo (idSesion);
+
+CREATE TABLE IF NOT EXISTS lecturaConteo (
+    idLectura INTEGER PRIMARY KEY AUTOINCREMENT,
+    idSesion INTEGER NOT NULL,
+    idInventarioUnico INTEGER,
+    codigoBarras TEXT,
+    token TEXT,
+    tipo TEXT NOT NULL DEFAULT 'OK',
+    ubicacionRegistrada TEXT,
+    ubicacionSesion TEXT,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usuario TEXT,
+    anulada INTEGER NOT NULL DEFAULT 0,
+    observacion TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_lectura_conteo_sesion
+ON lecturaConteo (idSesion);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_lectura_conteo_token
+ON lecturaConteo (token);
+
+CREATE TABLE IF NOT EXISTS movimientoInventario (
+    idMovimiento INTEGER PRIMARY KEY AUTOINCREMENT,
+    idInventarioUnico INTEGER NOT NULL,
+    tipo TEXT NOT NULL,
+    cantidadAnterior INTEGER,
+    cantidadMovimiento INTEGER,
+    cantidadNueva INTEGER,
+    origen TEXT,
+    idOrigen INTEGER,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usuario TEXT,
+    observacion TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_movimiento_inventario_item
+ON movimientoInventario (idInventarioUnico);
+
+CREATE INDEX IF NOT EXISTS idx_inventario_fecha_conteo
+ON inventarioUnico (fechaUltimoConteo);
 
 create table proveedor
 (
@@ -151,9 +240,24 @@ CREATE TABLE IF NOT EXISTS consolidado (
     otros TEXT,
     medida TEXT,
     descripcionEstandarizada TEXT,
+    grupo TEXT,
+
+    estadoConsolidado TEXT NOT NULL DEFAULT 'PENDIENTE_REVISION',
+    idInventarioUnico INTEGER,
+    fechaInventariado DATETIME,
+    usuarioInventariado TEXT,
+    fechaCreacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fechaModificacion DATETIME,
+    usuarioModificacion TEXT,
 
     fechaActualizacion DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_consolidado_estado
+ON consolidado (estadoConsolidado);
+
+CREATE INDEX IF NOT EXISTS idx_consolidado_inventario
+ON consolidado (idInventarioUnico);
 
 CREATE UNIQUE INDEX IF NOT EXISTS
 idx_consolidado_llave

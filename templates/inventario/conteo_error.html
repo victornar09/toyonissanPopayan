@@ -1,0 +1,32 @@
+{% extends "layouts/base.html" %}
+
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
+{% block title %}Conteo físico · Error{% endblock %}
+
+{% block content %}
+{% call encabezado_pagina(
+    'Conteo físico',
+    'No se pudo continuar con la sesión de conteo.',
+    'alerta',
+    [('Inicio', url_for('index')), ('Inventario', url_for('inventario.inventario_home')), ('Conteo', None)]
+) %}
+    <a href="{{ url_for('inventario.inventario_home') }}" class="btn btn-primary">
+        {{ icono('volver') }} Volver al inventario
+    </a>
+{% endcall %}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5">
+        <div class="mb-3 text-danger">
+            {{ icono('alerta') }}
+        </div>
+        <h2 class="h5 mb-2">No fue posible abrir el conteo</h2>
+        <p class="text-muted mb-4">{{ mensaje or 'Ocurrió un error inesperado.' }}</p>
+        <a href="{{ url_for('inventario.inventario_home') }}" class="btn btn-outline-secondary">
+            {{ icono('volver') }} Regresar al inventario
+        </a>
+    </div>
+</div>
+{% endblock %}

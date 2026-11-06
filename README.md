@@ -257,3 +257,477 @@ Al arrancar:
 - **Duplicados**: La deduplicación se hace por `descripcionClave` normalizada. Al inventariar desde factura se suma cantidad si ya existe.
 - **PDFs/XML**: Se guardan en `bin/pdf/` y `bin/xml/`. La ruta PDF se guarda en `facturas.ubicacion_pdf`.
 - **Consolidado**: Es el catálogo maestro para estandarizar; se actualiza desde Excel o desde "procesar pendientes" de facturas.
+
+
+# Visión funcional del módulo Consolidado e Inventario
+
+## Objetivo general
+
+La aplicación debe permitir conocer, identificar, ubicar, etiquetar, consultar, contar y exportar los artículos que existen físicamente en el local de Toyonissan Popayán.
+
+La arquitectura funcional se divide en cuatro responsabilidades:
+
+```text
+Facturas = origen documental de las compras
+Consolidado = catálogo maestro de artículos conocidos y estandarizados
+Inventario = artículos administrados físicamente en el local y asociados a un código de barras
+Conteo físico = verificación periódica de cantidades, ubicación y datos comerciales
+```
+
+El sistema debe facilitar tanto la gestión del almacén como la venta, permitiendo buscar artículos por código de barras, descripción, tipo de repuesto, referencia, equivalente, proveedor, marca del artículo, marca del vehículo, modelo, lado, grupo, ubicación o estante.
+
+---
+
+## 1. Módulo Facturas
+
+Facturas representa las compras y conserva la información original obtenida desde los archivos XML y PDF.
+
+Flujo esperado:
+
+```text
+Correo / XML
+→ Factura
+→ Líneas de factura
+→ Validación y estandarización
+→ Consolidado
+```
+
+Desde el detalle de una factura se debe poder:
+
+- Consultar el PDF.
+- Revisar sus líneas.
+- Procesar artículos pendientes hacia Consolidado.
+- Editar los datos necesarios antes de consolidar.
+- Inventariar artículos permitidos cuando ya tengan una relación válida con Consolidado.
+
+El inventariado desde Facturas debe reutilizar el mismo servicio de inventariado disponible desde Consolidado. No deben existir dos lógicas diferentes para crear artículos, generar códigos o imprimir etiquetas.
+
+---
+
+## 2. Módulo Consolidado
+
+Consolidado debe ser una sección principal visible en el menú, al mismo nivel que Facturas e Inventario.
+
+Su función es ser el catálogo maestro de todos los artículos conocidos y estandarizados, aunque todavía no estén identificados físicamente ni tengan código de barras.
+
+Consolidado debe responder:
+
+- ¿Qué productos han aparecido en las facturas?
+- ¿Cómo debe llamarse correctamente cada producto?
+- ¿Cuál es su referencia de proveedor, referencia de repuesto o equivalente?
+- ¿A qué vehículo, modelo y lado corresponde?
+- ¿Está completo y listo para inventariar?
+- ¿Ya fue llevado a Inventario?
+
+### Estados sugeridos
+
+- `PENDIENTE_REVISION`: faltan datos o deben verificarse.
+- `LISTO_INVENTARIAR`: cumple los campos mínimos.
+- `INVENTARIADO`: ya está relacionado con un artículo de Inventario.
+- `BLOQUEADO`: presenta duplicidad, ambigüedad o datos inválidos.
+
+### Funciones principales
+
+- Listado con filtros y paginación.
+- Búsqueda por descripción, referencias, equivalente, proveedor, vehículo, modelo, lado y estado.
+- Edición mediante modal.
+- Selección individual o múltiple.
+- Acción `Inventariar`.
+- Identificación visual de artículos inventariados y pendientes.
+- Relación trazable entre la línea de factura, Consolidado e Inventario.
+
+---
+
+## 3. Importar artículos desde Facturas hacia Consolidado
+
+Consolidado debe incluir el botón:
+
+**Importar artículos desde facturas**
+
+Este proceso debe permitir seleccionar:
+
+- Fecha inicial.
+- Fecha final.
+- Proveedor opcional.
+- Solo artículos no procesados.
+
+Antes de guardar debe mostrar una vista previa con:
+
+- Facturas encontradas.
+- Líneas encontradas.
+- Artículos nuevos.
+- Artículos ya existentes.
+- Coincidencias ambiguas.
+- Líneas sin referencia.
+- Líneas bloqueadas.
+
+Al confirmar:
+
+- Se importan únicamente líneas válidas.
+- Se aplica la estandarización existente.
+- Se evita duplicar registros por proveedor y referencia.
+- Se relacionan las líneas de factura con Consolidado.
+- No se crean artículos en Inventario.
+- No se asignan códigos de barras.
+- No se modifican cantidades de Inventario.
+
+La importación debe ser idempotente: procesar dos veces el mismo rango no debe duplicar registros.
+
+---
+
+## 4. Inventariar desde Consolidado
+
+Inventariar desde Consolidado significa registrar formalmente un producto como artículo administrado dentro del local.
+
+Al ejecutar esta acción se debe:
+
+1. Validar que el registro esté completo y no esté bloqueado.
+2. Comprobar si ya existe un artículo equivalente en Inventario.
+3. Crear el artículo si no existe o reutilizarlo cuando corresponda.
+4. Generar o reutilizar el código de barras.
+5. Relacionar Consolidado con el artículo de Inventario.
+6. Permitir asignar ubicación y estante, o dejarlos pendientes.
+7. Preparar e imprimir la etiqueta con BarTender.
+8. Registrar fecha y usuario del inventariado.
+9. Cambiar el estado de Consolidado a `INVENTARIADO`.
+
+La impresión debe estar desacoplada del guardado. Si BarTender falla, el artículo no debe duplicarse y debe existir una opción de reimpresión.
+
+También debe permitirse inventariar varios registros seleccionados, utilizando las mismas validaciones del inventariado individual.
+
+---
+
+## 5. Significado del módulo Inventario
+
+Inventario contiene exclusivamente artículos que la empresa decidió administrar físicamente dentro del local.
+
+Un artículo en Inventario debe poder tener:
+
+- Código de barras.
+- Descripción estandarizada.
+- Referencias y equivalentes.
+- Marca del artículo.
+- Marca y modelo del vehículo.
+- Lado y grupo.
+- Proveedor.
+- Costo y precio.
+- Ubicación y estante.
+- Estado de etiquetado.
+- Estado de conteo.
+- Cantidad registrada y última cantidad física aprobada.
+- Stock mínimo.
+- Fecha de creación y último conteo.
+
+Ya no se requiere diferenciar el artículo como `inventariadoTeorico` o `inventariadoFisico`.
+
+La separación correcta es:
+
+| Concepto | Significado |
+|---|---|
+| Está en Consolidado | El artículo es conocido y está estandarizado |
+| Está en Inventario | Tiene identidad operativa y código de barras |
+| Está etiquetado | La etiqueta fue impresa o verificada |
+| Está ubicado | Tiene ubicación y estante asignados |
+| Está contado | Su cantidad fue verificada físicamente |
+
+Un artículo puede estar en Inventario y continuar pendiente de ubicación, etiquetado o conteo.
+
+### Estados sugeridos
+
+```text
+estadoEtiquetado:
+- PENDIENTE
+- IMPRESO
+- VERIFICADO
+
+estadoConteo:
+- SIN_CONTAR
+- CONTADO
+- CON_DIFERENCIA
+- APROBADO
+```
+
+---
+
+## 6. Inventario como herramienta de búsqueda y venta
+
+Inventario debe facilitar la atención al cliente y la venta de repuestos.
+
+Debe permitir filtrar por:
+
+- Código de barras.
+- Descripción.
+- Tipo de repuesto.
+- Referencia.
+- Equivalente.
+- Marca del artículo.
+- Marca del vehículo.
+- Modelo del vehículo.
+- Lado.
+- Proveedor.
+- Grupo.
+- Ubicación.
+- Estante.
+- Disponibilidad.
+- Stock bajo.
+- Estado de etiquetado.
+- Estado de conteo.
+
+La tabla debe usar desplazamiento horizontal y, cuando sea viable, mantener fijas las columnas:
+
+- Código de barras.
+- Descripción.
+- Cantidad.
+- Ubicación.
+- Acciones.
+
+El botón `Editar` debe abrir un modal para corregir información comercial y de ubicación. Las cantidades no deben editarse directamente; deben cambiar mediante entradas, conteos o movimientos controlados.
+
+---
+
+## 7. Identificación y etiquetado del almacén
+
+Como actualmente no existe un inventario físico completo, se debe realizar un proceso progresivo por estantes.
+
+Flujo esperado:
+
+1. Seleccionar ubicación o estante.
+2. Tomar un artículo físico.
+3. Buscarlo en Consolidado.
+4. Completar o corregir sus datos.
+5. Inventariarlo.
+6. Generar o reutilizar su código de barras.
+7. Imprimir y colocar su etiqueta.
+8. Asignar ubicación y estante.
+9. Continuar con el siguiente artículo.
+
+En esta etapa la prioridad no es contar cantidades, sino lograr que cada tipo de artículo tenga una identidad confiable, código y ubicación.
+
+Si el producto físico no existe en Consolidado, se debe permitir crearlo manualmente después de verificar que no sea un duplicado.
+
+Las nuevas compras deben seguir entrando desde Facturas y quedar etiquetadas para no aumentar la cantidad de artículos pendientes de identificar.
+
+---
+
+## 8. Conteo físico con lector de códigos
+
+Cuando la mayoría de los artículos esté etiquetada, Inventario debe incluir la opción:
+
+**Iniciar inventario físico**
+
+El conteo se realizará mediante sesiones por ubicación o estante.
+
+Cada sesión debe registrar:
+
+- Nombre.
+- Responsable.
+- Fecha y hora de inicio.
+- Ubicación o estante.
+- Estado.
+- Fecha de finalización.
+- Observaciones.
+
+Flujo esperado:
+
+1. Crear la sesión.
+2. Seleccionar el estante.
+3. Mantener activo el campo de lectura.
+4. Escanear cada unidad física.
+5. Sumar una unidad por lectura.
+6. Guardar inmediatamente cada lectura.
+7. Mostrar el último producto leído y su cantidad acumulada.
+8. Permitir deshacer la última lectura.
+9. Permitir pausar y reanudar.
+10. Finalizar y comparar resultados.
+
+El sistema debe advertir:
+
+- Códigos desconocidos.
+- Productos asociados a otro estante.
+- Productos sin ubicación.
+- Posibles lecturas duplicadas.
+- Productos registrados que no fueron encontrados.
+
+---
+
+## 9. Conciliación de cantidades
+
+Escanear no debe modificar inmediatamente la cantidad oficial.
+
+El flujo debe ser:
+
+```text
+Lectura
+→ Conteo guardado
+→ Comparación
+→ Revisión
+→ Recuento opcional
+→ Aprobación
+→ Ajuste
+```
+
+Resultados posibles:
+
+- Correcto.
+- Faltante.
+- Sobrante.
+- No contado.
+- Código desconocido.
+- Ubicación incorrecta.
+
+Solo al aprobar el conteo se debe actualizar la cantidad oficial. Cada ajuste debe registrar cantidad anterior, cantidad contada, diferencia, usuario, fecha, sesión y observación.
+
+Una sesión aplicada no puede ejecutarse nuevamente.
+
+---
+
+## 10. Historial de movimientos
+
+Toda modificación de cantidades debe dejar trazabilidad.
+
+Tipos iniciales:
+
+```text
+ENTRADA_FACTURA
+AJUSTE_CONTEO
+CORRECCION
+SALIDA_VENTA
+DEVOLUCION
+```
+
+Cada movimiento debe registrar:
+
+- Artículo.
+- Tipo de movimiento.
+- Cantidad anterior.
+- Cantidad del movimiento.
+- Cantidad nueva.
+- Origen e identificador del origen.
+- Fecha.
+- Usuario.
+- Observación.
+
+No se deben modificar cantidades directamente sin registrar el motivo.
+
+---
+
+## 11. Exportación al programa contable
+
+Cuando las cantidades físicas sean confiables, Inventario debe permitir exportar la información al programa contable.
+
+El formato dependerá de la plantilla requerida por dicho programa, pero debe contemplar:
+
+- Código interno.
+- Código de barras.
+- Descripción.
+- Referencia.
+- Cantidad aprobada.
+- Costo.
+- Precio.
+- Impuesto.
+- Grupo.
+- Ubicación.
+- Proveedor.
+
+La exportación debe validar registros incompletos, registrar fecha y lote, y advertir sobre exportaciones repetidas.
+
+---
+
+## 12. Modelo de datos esperado
+
+### Consolidado
+
+Agregar o verificar:
+
+```text
+estadoConsolidado
+idInventarioUnico
+fechaInventariado
+usuarioInventariado
+```
+
+### Inventario
+
+Agregar o verificar:
+
+```text
+idUbicacion
+estadoEtiquetado
+estadoConteo
+cantidadFisica
+fechaUltimoConteo
+stockMinimo
+fechaCreacion
+```
+
+### Líneas de factura
+
+Mantener relación con Consolidado:
+
+```text
+inventarioFacturas.idConsolidado
+```
+
+### Nuevas entidades futuras
+
+- Sesión de conteo.
+- Detalle del conteo.
+- Lecturas individuales, si se requiere auditoría detallada.
+- Movimientos de inventario.
+
+Todos los cambios deben implementarse mediante migraciones idempotentes y conservar compatibilidad con las bases SQLite existentes.
+
+---
+
+## 13. Prioridad de implementación
+
+1. Auditar el estado actual de Facturas, Consolidado e Inventario.
+2. Crear Consolidado como módulo principal visible.
+3. Implementar filtros, edición y estados en Consolidado.
+4. Importar artículos desde Facturas por rango de fechas.
+5. Relacionar líneas de factura con Consolidado.
+6. Implementar inventariado individual y múltiple desde Consolidado.
+7. Unificar el servicio de inventariado usado por Facturas y Consolidado.
+8. Completar ubicación, etiquetado y reimpresión.
+9. Fortalecer filtros y edición de Inventario para apoyar ventas.
+10. Crear historial de movimientos.
+11. Implementar sesiones de conteo físico por estante.
+12. Integrar el lector de códigos de barras.
+13. Implementar conciliación y aprobación de diferencias.
+14. Agregar alertas de stock bajo.
+15. Implementar exportación al programa contable.
+
+---
+
+## 14. Restricciones para futuros desarrollos
+
+- No enviar todas las facturas directamente a Inventario.
+- No crear códigos de barras durante la importación hacia Consolidado.
+- No duplicar registros al procesar nuevamente un rango de fechas.
+- No inventariar registros incompletos, bloqueados o ambiguos.
+- No implementar lógicas diferentes para inventariar desde Facturas y Consolidado.
+- No modificar cantidades sin registrar movimientos.
+- No considerar que un artículo inventariado ya fue contado físicamente.
+- No crear productos automáticamente a partir de códigos desconocidos.
+- No aplicar un conteo sin revisión y aprobación.
+- No mezclar el proceso de exportación con el inventariado.
+- No depender únicamente del frontend para validar operaciones.
+- Mantener la impresión desacoplada de los cambios de base de datos.
+- Utilizar consultas parametrizadas, transacciones y migraciones idempotentes.
+
+---
+
+## 15. Instrucción para asistentes de IA
+
+Antes de implementar nuevas solicitudes relacionadas con Facturas, Consolidado o Inventario:
+
+1. Revisar esta visión funcional.
+2. Identificar a cuál módulo y fase pertenece el cambio.
+3. Inspeccionar rutas, plantillas, JavaScript, esquema y migraciones existentes.
+4. Confirmar qué partes ya funcionan y cuáles son únicamente visuales.
+5. Reutilizar los servicios actuales y evitar lógica duplicada.
+6. Mantener trazabilidad e idempotencia.
+7. Preservar la relación Factura → Consolidado → Inventario → Conteo → Movimiento.
+8. Implementar únicamente el alcance solicitado en cada prompt.
+9. Explicar cualquier modificación del modelo de datos o las reglas de negocio.
+10. Validar que cada cambio acerque la aplicación al objetivo final: identificar, etiquetar, ubicar, contar, consultar, vender y exportar los artículos físicos del local.

@@ -332,59 +332,78 @@
     margin: 0;
 }
 
-/* Tarjetas explicativas de inventario teórico / físico */
-.info-tile {
-    border-left: 4px solid transparent;
+/* Indicadores del inventario (sin distinción teórico / físico) */
+.inv-stat {
+    border-left: 4px solid #64748b !important;
 }
 
-.info-tile-teorico {
-    border-left-color: #2563eb;
+.inv-stat-stock { border-left-color: #15803d !important; }
+.inv-stat-etiqueta { border-left-color: #2563eb !important; }
+.inv-stat-conteo { border-left-color: #7c3aed !important; }
+
+.inv-stat-label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tn-muted);
 }
 
-.info-tile-fisico {
-    border-left-color: #15803d;
+.inv-stat-valor {
+    display: block;
+    font-size: 1.4rem;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
 }
 
-.info-tile-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.75rem;
-    background: #eef4ff;
-    color: #2563eb;
-}
-
-.info-tile-fisico .info-tile-icon {
-    background: #eaf7ee;
-    color: #15803d;
-}
-
-.info-tile-icon .icono {
-    width: 1.35rem;
-    height: 1.35rem;
-}
-
-.badge-teorico {
-    background-color: #e0ecff;
-    color: #1d4ed8;
-    border: 1px solid #bfdbfe;
+/* Estados de etiquetado, conteo y sesión */
+.badge-etiqueta,
+.badge-conteo,
+.badge-sesion,
+.badge-resultado {
     font-weight: 600;
+    border: 1px solid transparent;
 }
 
-.badge-fisico {
-    background-color: #e3f6e8;
-    color: #15803d;
-    border: 1px solid #bbf7d0;
-    font-weight: 600;
+.badge-etiqueta-pendiente { background-color: #fef3c7; color: #92400e; border-color: #fde68a; }
+.badge-etiqueta-impreso { background-color: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+.badge-etiqueta-verificado { background-color: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+
+.badge-conteo-sin-contar { background-color: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.badge-conteo-contado { background-color: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+.badge-conteo-con-diferencia { background-color: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+.badge-conteo-aprobado { background-color: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+
+.badge-sesion-abierta { background-color: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+.badge-sesion-pausada { background-color: #fef3c7; color: #92400e; border-color: #fde68a; }
+.badge-sesion-finalizada { background-color: #ede9fe; color: #6d28d9; border-color: #ddd6fe; }
+.badge-sesion-aplicada { background-color: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+
+.badge-resultado-pendiente,
+.badge-resultado-contado { background-color: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.badge-resultado-correcto { background-color: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+.badge-resultado-faltante { background-color: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+.badge-resultado-sobrante { background-color: #fef3c7; color: #92400e; border-color: #fde68a; }
+.badge-resultado-no-contado { background-color: #f3f4f6; color: #6b7280; border-color: #e5e7eb; }
+.badge-resultado-ubicacion-incorrecta { background-color: #ffedd5; color: #c2410c; border-color: #fed7aa; }
+
+/* Tabla de la pantalla de conteo */
+.tabla-conteo thead th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    background-color: #f8f9fa;
 }
 
-.badge-teorico .icono,
-.badge-fisico .icono {
-    width: 0.85rem;
-    height: 0.85rem;
+.tabla-conteo td {
+    vertical-align: middle;
+    font-size: 0.86rem;
+}
+
+#campoEscaneo {
+    font-size: 1.25rem;
+    letter-spacing: 0.05em;
 }
 
 /* Panel de filtros */
@@ -424,8 +443,9 @@
 .tabla-inventario-pro {
     --inv-codigo-w: 155px;
     --inv-desc-w: 270px;
+    --inv-cantidad-w: 100px;
     --inv-acciones-w: 145px;
-    min-width: 2280px;
+    min-width: 2480px;
     border-collapse: separate;
     border-spacing: 0;
 }
@@ -457,7 +477,11 @@
 .tabla-inventario-pro .col-inv-proveedor { min-width: 165px; max-width: 165px; }
 .tabla-inventario-pro .col-inv-grupo { min-width: 120px; max-width: 120px; }
 .tabla-inventario-pro .col-inv-estante { min-width: 95px; }
-.tabla-inventario-pro .col-inv-cantidad { min-width: 90px; text-align: center; }
+.tabla-inventario-pro .col-inv-cantidad {
+    min-width: var(--inv-cantidad-w);
+    max-width: var(--inv-cantidad-w);
+    text-align: center;
+}
 .tabla-inventario-pro .col-inv-precio { min-width: 120px; text-align: right; font-variant-numeric: tabular-nums; }
 .tabla-inventario-pro .col-inv-fecha { min-width: 125px; }
 .tabla-inventario-pro .col-inv-tipo { min-width: 110px; }
@@ -474,9 +498,10 @@
 .tabla-inventario-pro .col-inv-proveedor .texto-truncado { max-width: 150px; }
 .tabla-inventario-pro .col-inv-grupo .texto-truncado { max-width: 105px; }
 
-/* Columnas fijas: Código, Descripción y Acciones */
+/* Columnas fijas: Código, Descripción, Cantidad y Acciones */
 .tabla-inventario-pro .col-inv-codigo,
 .tabla-inventario-pro .col-inv-desc,
+.tabla-inventario-pro .col-inv-cantidad,
 .tabla-inventario-pro .col-inv-acciones {
     position: sticky;
     z-index: 3;
@@ -499,6 +524,11 @@
     box-shadow: 1px 0 0 var(--tn-border);
 }
 
+.tabla-inventario-pro .col-inv-cantidad {
+    left: calc(var(--inv-codigo-w) + var(--inv-desc-w));
+    box-shadow: 1px 0 0 var(--tn-border);
+}
+
 .tabla-inventario-pro .col-inv-acciones {
     right: 0;
     width: var(--inv-acciones-w);
@@ -510,6 +540,7 @@
 
 .tabla-inventario-pro thead .col-inv-codigo,
 .tabla-inventario-pro thead .col-inv-desc,
+.tabla-inventario-pro thead .col-inv-cantidad,
 .tabla-inventario-pro thead .col-inv-acciones {
     background-color: #f8f9fa;
     z-index: 4;
@@ -517,6 +548,7 @@
 
 .tabla-inventario-pro.table-hover > tbody > tr:hover > .col-inv-codigo,
 .tabla-inventario-pro.table-hover > tbody > tr:hover > .col-inv-desc,
+.tabla-inventario-pro.table-hover > tbody > tr:hover > .col-inv-cantidad,
 .tabla-inventario-pro.table-hover > tbody > tr:hover > .col-inv-acciones {
     background-color: #f1f3f5;
 }
@@ -547,8 +579,9 @@
     .tabla-inventario-pro {
         --inv-codigo-w: 115px;
         --inv-desc-w: 190px;
+        --inv-cantidad-w: 90px;
         --inv-acciones-w: 105px;
-        min-width: 2100px;
+        min-width: 2300px;
     }
 
     .tabla-inventario-pro .col-inv-proveedor .texto-truncado { max-width: 120px; }
@@ -556,3 +589,206 @@
 }
 
 
+
+/* ==========================================================================
+   Consolidado
+   ========================================================================== */
+
+.consola-stat {
+    border-left: 4px solid var(--tn-border) !important;
+}
+
+.consola-stat-listo { border-left-color: #15803d !important; }
+.consola-stat-pendiente { border-left-color: #d97706 !important; }
+.consola-stat-bloqueado { border-left-color: #b91c1c !important; }
+.consola-stat-inventariado { border-left-color: #2563eb !important; }
+
+.consola-stat-label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tn-muted);
+}
+
+.consola-stat-valor {
+    display: block;
+    font-size: 1.4rem;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+.consola-preview-item {
+    border: 1px solid var(--tn-border);
+    border-radius: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    height: 100%;
+}
+
+.consola-preview-item span {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--tn-muted);
+}
+
+.consola-preview-item strong {
+    font-size: 1.15rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.badge-estado {
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+}
+
+.badge-estado-listo_inventariar,
+.badge-estado-listo-inventariar {
+    background-color: #e3f6e8;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-estado-pendiente_revision,
+.badge-estado-pendiente-revision {
+    background-color: #fff4e0;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+.badge-estado-bloqueado {
+    background-color: #fdeaea;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+.badge-estado-inventariado {
+    background-color: #e0ecff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+/* Tabla ancha con columnas fijas */
+.tabla-consolidado-pro {
+    --cons-chk-w: 46px;
+    --cons-estado-w: 150px;
+    --cons-desc-w: 310px;
+    --cons-acciones-w: 215px;
+    min-width: 2280px;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.tabla-consolidado-pro th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    vertical-align: bottom;
+    background-color: #f8f9fa;
+}
+
+.tabla-consolidado-pro td {
+    white-space: nowrap;
+    vertical-align: middle;
+    font-size: 0.84rem;
+}
+
+.tabla-consolidado-pro td:nth-child(4),
+.tabla-consolidado-pro td:nth-child(5),
+.tabla-consolidado-pro td:nth-child(6),
+.tabla-consolidado-pro td:nth-child(7) {
+    min-width: 145px;
+}
+
+.tabla-consolidado-pro td:nth-child(8),
+.tabla-consolidado-pro td:nth-child(9),
+.tabla-consolidado-pro td:nth-child(10) {
+    min-width: 135px;
+    max-width: 160px;
+}
+
+.tabla-consolidado-pro .texto-truncado {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 190px;
+}
+
+.tabla-consolidado-pro .col-cons-desc .texto-truncado {
+    max-width: calc(var(--cons-desc-w) - 24px);
+    font-weight: 600;
+}
+
+.tabla-consolidado-pro .col-cons-chk,
+.tabla-consolidado-pro .col-cons-estado,
+.tabla-consolidado-pro .col-cons-desc,
+.tabla-consolidado-pro .col-cons-acciones {
+    position: sticky;
+    z-index: 3;
+    background-color: #fff;
+}
+
+.tabla-consolidado-pro .col-cons-chk {
+    left: 0;
+    width: var(--cons-chk-w);
+    min-width: var(--cons-chk-w);
+    max-width: var(--cons-chk-w);
+    text-align: center;
+}
+
+.tabla-consolidado-pro .col-cons-estado {
+    left: var(--cons-chk-w);
+    width: var(--cons-estado-w);
+    min-width: var(--cons-estado-w);
+    max-width: var(--cons-estado-w);
+    box-shadow: 1px 0 0 var(--tn-border);
+}
+
+.tabla-consolidado-pro .col-cons-desc {
+    left: calc(var(--cons-chk-w) + var(--cons-estado-w));
+    width: var(--cons-desc-w);
+    min-width: var(--cons-desc-w);
+    max-width: var(--cons-desc-w);
+    box-shadow: 1px 0 0 var(--tn-border);
+}
+
+.tabla-consolidado-pro .col-cons-acciones {
+    right: 0;
+    width: var(--cons-acciones-w);
+    min-width: var(--cons-acciones-w);
+    max-width: var(--cons-acciones-w);
+    text-align: center;
+    box-shadow: -1px 0 0 var(--tn-border);
+}
+
+.tabla-consolidado-pro .col-cons-acciones .btn {
+    margin: 0.1rem;
+}
+
+.tabla-consolidado-pro thead .col-cons-chk,
+.tabla-consolidado-pro thead .col-cons-estado,
+.tabla-consolidado-pro thead .col-cons-desc,
+.tabla-consolidado-pro thead .col-cons-acciones {
+    background-color: #f8f9fa;
+    z-index: 4;
+}
+
+.tabla-consolidado-pro.table-hover > tbody > tr:hover > .col-cons-chk,
+.tabla-consolidado-pro.table-hover > tbody > tr:hover > .col-cons-estado,
+.tabla-consolidado-pro.table-hover > tbody > tr:hover > .col-cons-desc,
+.tabla-consolidado-pro.table-hover > tbody > tr:hover > .col-cons-acciones {
+    background-color: #f1f3f5;
+}
+
+@media (max-width: 767.98px) {
+    .tabla-consolidado-pro {
+        --cons-chk-w: 40px;
+        --cons-estado-w: 125px;
+        --cons-desc-w: 210px;
+        --cons-acciones-w: 160px;
+        min-width: 2100px;
+    }
+}
