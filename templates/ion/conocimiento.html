@@ -1,0 +1,277 @@
+{% extends "layouts/base.html" %}
+
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
+{% block title %}ION · Conocimiento{% endblock %}
+
+{% block content %}
+{% call encabezado_pagina(
+    'ION · Base de conocimiento',
+    'Sinónimos, nombres populares y errores frecuentes. Las sugerencias de los vendedores no se usan hasta ser aprobadas.',
+    'configuracion',
+    [('Inicio', url_for('index')), ('ION', url_for('ion.ion_home')), ('Conocimiento', None)]
+) %}
+    <a href="{{ url_for('ion.ion_home') }}" class="btn btn-outline-secondary">
+        {{ icono('volver') }} Volver al buscador
+    </a>
+{% endcall %}
+
+<div id="ionConocimientoMensaje" class="d-none" role="alert"></div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h2 class="h6 mb-0">Registrar compatibilidad verificada</h2>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Sólo debe registrarse información respaldada. ION no deduce
+            compatibilidades por su cuenta.
+        </p>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <label class="form-label" for="ionCompMarca">Marca</label>
+                <input type="text" class="form-control" id="ionCompMarca" maxlength="80" placeholder="Toyota">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="ionCompModelo">Modelo</label>
+                <input type="text" class="form-control" id="ionCompModelo" maxlength="80" placeholder="Hilux">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="ionCompAnioDesde">Año desde</label>
+                <input type="number" class="form-control" id="ionCompAnioDesde" min="1950" max="2100" placeholder="2010">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="ionCompAnioHasta">Año hasta</label>
+                <input type="number" class="form-control" id="ionCompAnioHasta" min="1950" max="2100" placeholder="2015">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="ionCompLado">Lado</label>
+                <select class="form-select" id="ionCompLado">
+                    <option value="">No aplica</option>
+                    <option value="IZQUIERDO">Izquierdo</option>
+                    <option value="DERECHO">Derecho</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="ionCompMotor">Motor / cilindraje</label>
+                <input type="text" class="form-control" id="ionCompMotor" maxlength="80" placeholder="2.5 diésel">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="ionCompMedida">Medida</label>
+                <input type="text" class="form-control" id="ionCompMedida" maxlength="80" placeholder="230 mm">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="ionCompObservacion">Observación / respaldo</label>
+                <input type="text" class="form-control" id="ionCompObservacion" maxlength="240" placeholder="Catálogo del proveedor, ficha técnica...">
+            </div>
+        </div>
+        <button type="button" class="btn btn-primary mt-3" id="btnIonGuardarCompatibilidad">
+            Registrar compatibilidad
+        </button>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h2 class="h6 mb-0">Sugerencias pendientes de aprobación</h2>
+        <span class="badge bg-warning text-dark">{{ pendientes|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        {% if pendientes %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Término del cliente</th>
+                        <th>Nombre registrado</th>
+                        <th>Tipo</th>
+                        <th>Origen</th>
+                        <th>Fecha</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in pendientes %}
+                    <tr>
+                        <td><strong>{{ item[1] }}</strong></td>
+                        <td>{{ item[2] }}</td>
+                        <td><span class="badge bg-light text-dark">{{ item[3] }}</span></td>
+                        <td>{{ item[5] or '-' }}{% if item[6] %} · {{ item[6] }}{% endif %}</td>
+                        <td class="text-muted small">{{ item[7] }}</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-success ion-btn-estado"
+                                    data-url="{{ url_for('ion.ion_cambiar_estado', id_sinonimo=item[0]) }}"
+                                    data-estado="APROBADO">Aprobar</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger ion-btn-estado"
+                                    data-url="{{ url_for('ion.ion_cambiar_estado', id_sinonimo=item[0]) }}"
+                                    data-estado="RECHAZADO">Rechazar</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0 p-4">No hay sugerencias pendientes.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h2 class="h6 mb-0">Términos aprobados</h2>
+                <span class="badge bg-success">{{ aprobados|length }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if aprobados %}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr><th>Término</th><th>Reemplazo</th><th>Revisado por</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for item in aprobados %}
+                            <tr>
+                                <td>{{ item[1] }}</td>
+                                <td>{{ item[2] }}</td>
+                                <td class="text-muted small">{{ item[8] or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0 p-4">Todavía no hay términos aprobados manualmente.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h2 class="h6 mb-0">Compatibilidades registradas</h2>
+                <span class="badge bg-light text-dark">{{ compatibilidades|length }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if compatibilidades %}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr><th>Marca / modelo</th><th>Motor</th><th>Lado</th><th>Observación</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for item in compatibilidades %}
+                            <tr>
+                                <td>{{ item[3] or '-' }}{% if item[4] %} {{ item[4] }}{% endif %}</td>
+                                <td>{{ item[7] or '-' }}</td>
+                                <td>{{ item[14] or '-' }}</td>
+                                <td class="text-muted small">{{ item[15] or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0 p-4">No hay compatibilidades adicionales registradas.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if rechazados %}
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white py-3">
+        <h2 class="h6 mb-0">Términos rechazados</h2>
+    </div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+            {% for item in rechazados %}
+            <span class="badge bg-light text-muted">{{ item[1] }} → {{ item[2] }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block javascripts %}
+<script>
+(function () {
+    "use strict";
+    const elMensaje = document.getElementById("ionConocimientoMensaje");
+    const URL_COMPATIBILIDAD = {{ url_for('ion.ion_compatibilidad')|tojson }};
+
+    function mostrar(texto, tipo) {
+        elMensaje.className = "alert alert-" + (tipo || "info");
+        elMensaje.textContent = texto;
+    }
+
+    document.getElementById("btnIonGuardarCompatibilidad").addEventListener("click", async function () {
+        const boton = this;
+        const datos = {
+            marca: document.getElementById("ionCompMarca").value.trim(),
+            modelo: document.getElementById("ionCompModelo").value.trim(),
+            anioDesde: document.getElementById("ionCompAnioDesde").value || null,
+            anioHasta: document.getElementById("ionCompAnioHasta").value || null,
+            motor: document.getElementById("ionCompMotor").value.trim(),
+            lado: document.getElementById("ionCompLado").value,
+            medida: document.getElementById("ionCompMedida").value.trim(),
+            observacion: document.getElementById("ionCompObservacion").value.trim()
+        };
+
+        boton.disabled = true;
+        try {
+            const respuesta = await fetch(URL_COMPATIBILIDAD, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(datos)
+            });
+            const cuerpo = await respuesta.json();
+            if (!respuesta.ok || !cuerpo.ok) {
+                throw new Error(cuerpo.mensaje || "No fue posible registrar la compatibilidad.");
+            }
+            mostrar(cuerpo.mensaje, "success");
+            setTimeout(function () { window.location.reload(); }, 800);
+        } catch (error) {
+            mostrar(error.message, "danger");
+            boton.disabled = false;
+        }
+    });
+
+    document.addEventListener("click", async function (evento) {
+        const boton = evento.target.closest(".ion-btn-estado");
+        if (!boton) {
+            return;
+        }
+
+        const url = boton.getAttribute("data-url");
+        const estado = boton.getAttribute("data-estado");
+        boton.disabled = true;
+
+        try {
+            const respuesta = await fetch(url, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({estado: estado})
+            });
+            const cuerpo = await respuesta.json();
+            if (!respuesta.ok || !cuerpo.ok) {
+                throw new Error(cuerpo.mensaje || "No fue posible actualizar el término.");
+            }
+            elMensaje.className = "alert alert-success";
+            elMensaje.textContent = cuerpo.mensaje;
+            setTimeout(function () { window.location.reload(); }, 800);
+        } catch (error) {
+            elMensaje.className = "alert alert-danger";
+            elMensaje.textContent = error.message;
+            boton.disabled = false;
+        }
+    });
+})();
+</script>
+{% endblock %}

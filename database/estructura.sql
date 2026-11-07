@@ -348,3 +348,111 @@ INSERT INTO configuracion (id, nombre_db, email_revision, token_contraseña, cor
 
 INSERT INTO bartenderFiles (idBartenderFiles, name, ubicacion, numeroColumnas, activo) VALUES (1, '40x50', 'bartenderFiles/Documento1.btw', 2, 1);
 INSERT INTO bartenderFiles (idBartenderFiles, name, ubicacion, numeroColumnas, activo) VALUES (2, '30x40', 'bartenderFiles/Documento2.btw', 1, 1);
+
+-- ============================================================================
+-- ION: buscador inteligente de repuestos
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS ionSinonimo (
+    idSinonimo INTEGER PRIMARY KEY AUTOINCREMENT,
+    termino TEXT NOT NULL,
+    terminoNormalizado TEXT NOT NULL,
+    reemplazo TEXT NOT NULL,
+    reemplazoNormalizado TEXT NOT NULL,
+    tipo TEXT NOT NULL DEFAULT 'SINONIMO',
+    estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+    origen TEXT,
+    idConsulta INTEGER,
+    usuarioCreacion TEXT,
+    fechaCreacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usuarioRevision TEXT,
+    fechaRevision DATETIME,
+    UNIQUE (terminoNormalizado, reemplazoNormalizado)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ion_sinonimo_estado
+ON ionSinonimo (estado);
+
+CREATE TABLE IF NOT EXISTS ionCompatibilidad (
+    idCompatibilidad INTEGER PRIMARY KEY AUTOINCREMENT,
+    idConsolidado INTEGER,
+    idInventarioUnico INTEGER,
+    marca TEXT,
+    modelo TEXT,
+    anioDesde INTEGER,
+    anioHasta INTEGER,
+    motor TEXT,
+    combustible TEXT,
+    transmision TEXT,
+    traccion TEXT,
+    cabina TEXT,
+    medida TEXT,
+    posicion TEXT,
+    lado TEXT,
+    observacion TEXT,
+    estado TEXT NOT NULL DEFAULT 'APROBADO',
+    usuarioCreacion TEXT,
+    fechaCreacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ion_compatibilidad_item
+ON ionCompatibilidad (idConsolidado, idInventarioUnico);
+
+CREATE TABLE IF NOT EXISTS ionConsulta (
+    idConsulta INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario TEXT,
+    consultaOriginal TEXT NOT NULL,
+    interpretacion TEXT,
+    criterios TEXT,
+    respuestas TEXT,
+    preguntas TEXT,
+    resultados TEXT,
+    idResultadoSeleccionado INTEGER,
+    tipoResultadoSeleccionado TEXT,
+    sinResultados INTEGER NOT NULL DEFAULT 0,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ion_consulta_fecha
+ON ionConsulta (fecha);
+
+CREATE TABLE IF NOT EXISTS ionConsultaPregunta (
+    idPregunta INTEGER PRIMARY KEY AUTOINCREMENT,
+    idConsulta INTEGER NOT NULL,
+    campo TEXT,
+    pregunta TEXT,
+    respuesta TEXT,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ion_pregunta_consulta
+ON ionConsultaPregunta (idConsulta);
+
+CREATE TABLE IF NOT EXISTS ionFeedback (
+    idFeedback INTEGER PRIMARY KEY AUTOINCREMENT,
+    idConsulta INTEGER,
+    tipoResultado TEXT,
+    idResultado INTEGER,
+    tipo TEXT NOT NULL,
+    motivo TEXT,
+    usuario TEXT,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ion_feedback_consulta
+ON ionFeedback (idConsulta);
+
+CREATE TABLE IF NOT EXISTS ionIndiceMeta (
+    clave TEXT PRIMARY KEY,
+    valor TEXT
+);
+
+INSERT OR IGNORE INTO ionIndiceMeta (clave, valor) VALUES ('dirty', '1');
+INSERT OR IGNORE INTO ionIndiceMeta (clave, valor) VALUES ('version', '1');
+
+CREATE VIRTUAL TABLE IF NOT EXISTS ionIndice USING fts5(
+    tipo UNINDEXED,
+    idOrigen UNINDEXED,
+    contenido,
+    tokenize = 'unicode61 remove_diacritics 2'
+);

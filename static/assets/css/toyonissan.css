@@ -792,3 +792,434 @@
         min-width: 2100px;
     }
 }
+
+/* ==========================================================================
+   ION · Buscador conversacional de repuestos
+   ========================================================================== */
+
+.ion-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.ion-buscador {
+    border-radius: 1rem;
+    background:
+        radial-gradient(circle at top right, rgba(13, 110, 253, 0.10), transparent 45%),
+        #fff;
+}
+
+.ion-etiqueta-principal {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 0.55rem;
+}
+
+.ion-caja-consulta {
+    display: flex;
+    gap: 0.6rem;
+    align-items: stretch;
+}
+
+.ion-textarea {
+    min-height: 64px;
+    resize: vertical;
+    border-radius: 0.8rem;
+    border-color: #d7dce3;
+    font-size: 1rem;
+    padding: 0.85rem 1rem;
+}
+
+.ion-textarea:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.12);
+}
+
+.ion-btn-buscar {
+    min-width: 130px;
+    border-radius: 0.8rem;
+    font-weight: 700;
+}
+
+.ion-ejemplos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.85rem;
+}
+
+.ion-ejemplos-titulo {
+    font-size: 0.82rem;
+    color: #6b7280;
+    font-weight: 600;
+    margin-right: 0.15rem;
+}
+
+.ion-chip-ejemplo {
+    border: 1px solid #dbe3ef;
+    background: #f8fafc;
+    color: #334155;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    padding: 0.32rem 0.72rem;
+    transition: all 0.15s ease;
+}
+
+.ion-chip-ejemplo:hover {
+    background: #eaf2ff;
+    border-color: #b9cff5;
+    color: #0b4fc4;
+}
+
+.ion-estado {
+    margin-top: 0.9rem;
+    font-size: 0.88rem;
+    color: #6b7280;
+    min-height: 1.2rem;
+}
+
+.ion-estado-ok { color: #146c43; }
+.ion-estado-error { color: #b02a37; }
+.ion-estado-info { color: #0b5ed7; }
+
+.ion-resumen {
+    margin: 1rem 0;
+    padding: 0.85rem 1rem;
+    border-radius: 0.85rem;
+    background: #f5f8ff;
+    border: 1px solid #e0e9fb;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.ion-resumen-titulo {
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #4b5563;
+    margin-right: 0.25rem;
+}
+
+.ion-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.28rem 0.62rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #dbe5f5;
+    font-size: 0.78rem;
+    color: #334155;
+}
+
+.ion-chip-principal {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+    font-weight: 700;
+}
+
+.ion-chip-suave {
+    background: #eef2f7;
+    color: #4b5563;
+}
+
+.ion-pregunta {
+    display: flex;
+    gap: 0.85rem;
+    margin: 1rem 0;
+    padding: 1rem;
+    border-radius: 0.9rem;
+    background: #fff8e6;
+    border: 1px solid #ffe2a8;
+}
+
+.ion-pregunta-icono {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #ffc107;
+    color: #3d2c00;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ion-pregunta-cuerpo { flex: 1 1 auto; }
+
+.ion-pregunta-texto {
+    margin: 0 0 0.65rem;
+    font-weight: 600;
+    color: #3d2c00;
+}
+
+.ion-opciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.ion-opcion {
+    border-radius: 999px;
+    font-size: 0.86rem;
+    padding: 0.38rem 0.9rem;
+}
+
+.ion-opcion-cantidad {
+    opacity: 0.65;
+    font-size: 0.75rem;
+    margin-left: 0.15rem;
+}
+
+.ion-mensaje { margin: 1rem 0; }
+
+.ion-vacio {
+    text-align: center;
+    padding: 3rem 1rem;
+    border: 1px dashed #d7dce3;
+    border-radius: 1rem;
+    background: #fbfcfe;
+}
+
+.ion-vacio-icono {
+    display: inline-flex;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    background: #eaf2ff;
+    color: #0d6efd;
+    margin-bottom: 0.8rem;
+}
+
+.ion-bloque {
+    margin-top: 1.6rem;
+}
+
+.ion-bloque-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.ion-bloque-inventario .ion-bloque-cabecera { border-bottom-color: #198754; }
+.ion-bloque-consolidado .ion-bloque-cabecera { border-bottom-color: #fd7e14; }
+
+.ion-bloque-titulo {
+    font-size: 1.05rem;
+    font-weight: 800;
+    margin: 0;
+    color: #1f2937;
+}
+
+.ion-bloque-contador {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #6b7280;
+    background: #f1f3f5;
+    border-radius: 999px;
+    padding: 0.22rem 0.62rem;
+    white-space: nowrap;
+}
+
+.ion-bloque-descripcion {
+    font-size: 0.83rem;
+    color: #6b7280;
+    margin: 0.55rem 0 0.9rem;
+}
+
+.ion-tarjeta {
+    background: #fff;
+    border: 1px solid #e6e9ee;
+    border-radius: 0.95rem;
+    padding: 1rem 1.05rem;
+    margin-bottom: 0.9rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.ion-tarjeta-inventario {
+    border-left: 4px solid #198754;
+}
+
+.ion-tarjeta-consolidado {
+    border-left: 4px solid #fd7e14;
+    background: #fffdf9;
+}
+
+.ion-tarjeta-cabecera {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+
+.ion-tarjeta-titulo {
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: #172033;
+    margin: 0.35rem 0 0.1rem;
+    line-height: 1.3;
+}
+
+.ion-tarjeta-interpretado {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin: 0;
+}
+
+.ion-nivel {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.18rem 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.ion-nivel-alta { background: #d1e7dd; color: #0f5132; }
+.ion-nivel-media { background: #fff3cd; color: #664d03; }
+.ion-nivel-baja { background: #f8d7da; color: #842029; }
+
+.ion-disponibilidad {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.28rem 0.65rem;
+    font-size: 0.74rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.ion-disponibilidad-si { background: #d1e7dd; color: #0f5132; }
+.ion-disponibilidad-no { background: #fff3cd; color: #7a4b00; }
+
+.ion-tarjeta-datos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.55rem 1rem;
+    margin: 0.9rem 0 0.6rem;
+    padding: 0.75rem 0.85rem;
+    background: #f9fafb;
+    border-radius: 0.75rem;
+}
+
+.ion-tarjeta-datos > div { min-width: 0; }
+
+.ion-tarjeta-datos span {
+    display: block;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #8a94a6;
+    font-weight: 700;
+    margin-bottom: 0.1rem;
+}
+
+.ion-tarjeta-datos strong {
+    display: block;
+    font-size: 0.84rem;
+    color: #243044;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.ion-dato-ancho { grid-column: span 2; }
+
+.ion-datos-grupo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+}
+
+.ion-datos-titulo {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #8a94a6;
+    font-weight: 800;
+    margin-right: 0.2rem;
+}
+
+.ion-dato {
+    font-size: 0.74rem;
+    border-radius: 999px;
+    padding: 0.16rem 0.48rem;
+}
+
+.ion-dato-ok { background: #e7f5ec; color: #146c43; }
+.ion-dato-pendiente { background: #eef2f7; color: #5c6678; }
+
+.ion-aviso-consolidado {
+    margin-top: 0.65rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.6rem;
+    background: #fff3cd;
+    color: #7a4b00;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.ion-explicacion {
+    font-size: 0.8rem;
+    color: #5c6678;
+    margin: 0.6rem 0 0;
+}
+
+.ion-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.8rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed #e3e7ee;
+}
+
+.ion-acciones .btn { border-radius: 0.6rem; }
+
+.ion-acciones-finales {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.ion-sin-resultados {
+    margin-top: 1.2rem;
+    padding: 1.4rem;
+    border-radius: 1rem;
+    background: #fff;
+    border: 1px solid #f1c2c7;
+}
+
+@media (max-width: 767.98px) {
+    .ion-caja-consulta { flex-direction: column; }
+    .ion-btn-buscar { width: 100%; }
+    .ion-tarjeta-datos { grid-template-columns: 1fr 1fr; }
+    .ion-dato-ancho { grid-column: span 2; }
+    .ion-tarjeta { padding: 0.9rem; }
+    .ion-tarjeta-cabecera { flex-direction: column; }
+    .ion-acciones .btn { flex: 1 1 auto; }
+}
+
+@media (max-width: 420px) {
+    .ion-tarjeta-datos { grid-template-columns: 1fr; }
+    .ion-dato-ancho { grid-column: span 1; }
+}

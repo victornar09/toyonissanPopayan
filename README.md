@@ -731,3 +731,69 @@ Antes de implementar nuevas solicitudes relacionadas con Facturas, Consolidado o
 8. Implementar únicamente el alcance solicitado en cada prompt.
 9. Explicar cualquier modificación del modelo de datos o las reglas de negocio.
 10. Validar que cada cambio acerque la aplicación al objetivo final: identificar, etiquetar, ubicar, contar, consultar, vender y exportar los artículos físicos del local.
+
+---
+
+## 16. Módulo ION: buscador inteligente de repuestos
+
+ION es un asistente exclusivo para localizar repuestos. No crea productos, no
+modifica inventario, precios ni cantidades, y no inventa compatibilidades.
+
+### Flujo de búsqueda
+
+1. Código de barras exacto.
+2. Referencia o equivalente exacto.
+3. Nombre estandarizado.
+4. Sinónimos y nombres populares aprobados.
+5. Coincidencia parcial y tolerancia a errores de escritura.
+6. Compatibilidad técnica declarada (lado, posición, cabina, tracción,
+   transmisión, combustible, motor, año y medida).
+
+La búsqueda es híbrida: normalización de texto, lexicón técnico, sinónimos
+aprobados, índice FTS5 de SQLite y similitud de cadenas. La arquitectura deja
+la puerta abierta a embeddings o servicios de IA, pero el funcionamiento
+básico no depende de ellos.
+
+### Resultados
+
+- **Disponible en Inventario**: se muestra primero, con código de barras,
+  descripción, referencias, compatibilidad, cantidad, precio, ubicación,
+  estante y estado de disponibilidad.
+- **Encontrado en Consolidado, pero no inventariado**: se muestra después y
+  nunca se presenta como disponible para venta. Los registros vinculados a
+  Inventario o ya inventariados se excluyen para evitar duplicados.
+
+Cada resultado indica nivel de coincidencia (alta, media, baja), nombre
+interpretado, datos coincidentes, datos pendientes y una explicación breve.
+
+### Preguntas inteligentes
+
+Si hay varios candidatos, ION pregunta únicamente por la dimensión que permite
+diferenciarlos. Después de cada respuesta vuelve a buscar y sólo pregunta de
+nuevo si la ambigüedad continúa. Una referencia, un código de barras o un
+equivalente que identifique un único artículo no genera preguntas.
+
+### Conocimiento y auditoría
+
+- `ionSinonimo`: sinónimos, nombres populares, abreviaturas, errores
+  frecuentes, equivalentes, medidas, sistemas y posiciones. Las sugerencias de
+  los vendedores quedan en estado `PENDIENTE` hasta que un administrador las
+  apruebe.
+- `ionCompatibilidad`: compatibilidades verificadas por vehículo y datos
+  técnicos.
+- `ionConsulta`, `ionConsultaPregunta` e `ionFeedback`: consulta original,
+  interpretación, preguntas, respuestas, resultados mostrados, resultado
+  seleccionado, consultas sin resultados y reportes.
+- `ionIndice` e `ionIndiceMeta`: índice FTS5 y control de reconstrucción. Los
+  triggers marcan el índice como obsoleto cuando cambian Inventario o
+  Consolidado.
+
+### Reglas de seguridad
+
+- Las consultas son parametrizadas.
+- ION no modifica Inventario, precios, cantidades ni Consolidado.
+- ION no crea artículos automáticamente.
+- Un artículo de Consolidado no se considera existencia física del local.
+- Los términos sugeridos no se usan hasta ser aprobados.
+- Si faltan datos, el resultado baja de nivel de coincidencia y se indica qué
+  falta por confirmar.

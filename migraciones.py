@@ -479,6 +479,199 @@ def _migrar_conteo_fisico(conn):
             pass
 
 
+def _migrar_ion(conn):
+    """Estructuras del asistente ION: conocimiento, auditoría e índice FTS5.
+
+    Todo es aditivo e idempotente. El índice es una tabla virtual FTS5; si la
+    compilación de SQLite no la soporta, la búsqueda usa el respaldo LIKE y
+    similitud en Python.
+    """
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ionSinonimo (
+            idSinonimo INTEGER PRIMARY KEY AUTOINCREMENT,
+            termino TEXT NOT NULL,
+            terminoNormalizado TEXT NOT NULL,
+            reemplazo TEXT NOT NULL,
+            reemplazoNormalizado TEXT NOT NULL,
+            tipo TEXT NOT NULL DEFAULT 'SINONIMO',
+            estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+            origen TEXT,
+            idConsulta INTEGER,
+            usuarioCreacion TEXT,
+            fechaCreacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            usuarioRevision TEXT,
+            fechaRevision DATETIME,
+            UNIQUE (terminoNormalizado, reemplazoNormalizado)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ionCompatibilidad (
+            idCompatibilidad INTEGER PRIMARY KEY AUTOINCREMENT,
+            idConsolidado INTEGER,
+            idInventarioUnico INTEGER,
+            marca TEXT,
+            modelo TEXT,
+            anioDesde INTEGER,
+            anioHasta INTEGER,
+            motor TEXT,
+            combustible TEXT,
+            transmision TEXT,
+            traccion TEXT,
+            cabina TEXT,
+            medida TEXT,
+            posicion TEXT,
+            lado TEXT,
+            observacion TEXT,
+            estado TEXT NOT NULL DEFAULT 'APROBADO',
+            usuarioCreacion TEXT,
+            fechaCreacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ionConsulta (
+            idConsulta INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT,
+            consultaOriginal TEXT NOT NULL,
+            interpretacion TEXT,
+            criterios TEXT,
+            respuestas TEXT,
+            preguntas TEXT,
+            resultados TEXT,
+            idResultadoSeleccionado INTEGER,
+            tipoResultadoSeleccionado TEXT,
+            sinResultados INTEGER NOT NULL DEFAULT 0,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ionConsultaPregunta (
+            idPregunta INTEGER PRIMARY KEY AUTOINCREMENT,
+            idConsulta INTEGER NOT NULL,
+            campo TEXT,
+            pregunta TEXT,
+            respuesta TEXT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ionFeedback (
+            idFeedback INTEGER PRIMARY KEY AUTOINCREMENT,
+            idConsulta INTEGER,
+            tipoResultado TEXT,
+            idResultado INTEGER,
+            tipo TEXT NOT NULL,
+            motivo TEXT,
+            usuario TEXT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ionIndiceMeta (
+            clave TEXT PRIMARY KEY,
+            valor TEXT
+        )
+    """)
+    conn.execute(
+        "INSERT OR IGNORE INTO ionIndiceMeta (clave, valor) VALUES (?, ?)",
+        ("dirty", "1"),
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO ionIndiceMeta (clave, valor) VALUES (?, ?)",
+        ("version", "1"),
+    )
+
+    indices = [
+        "CREATE INDEX IF NOT EXISTS idx_ion_sinonimo_estado "
+        "ON ionSinonimo (estado)",
+        "CREATE INDEX IF NOT EXISTS idx_ion_consulta_fecha "
+        "ON ionConsulta (fecha)",
+        "CREATE INDEX IF NOT EXISTS idx_ion_pregunta_consulta "
+        "ON ionConsultaPregunta (idConsulta)",
+        "CREATE INDEX IF NOT EXISTS idx_ion_feedback_consulta "
+        "ON ionFeedback (idConsulta)",
+        "CREATE INDEX IF NOT EXISTS idx_ion_compatibilidad_item "
+        "ON ionCompatibilidad (idConsolidado, idInventarioUnico)",
+    ]
+    for sql in indices:
+        conn.execute(sql)
+
+    try:
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS ionIndice USING fts5(
+                tipo UNINDEXED,
+                idOrigen UNINDEXED,
+                contenido,
+                tokenize = 'unicode61 remove_diacritics 2'
+            )
+        """)
+    except sqlite3.OperationalError:
+        # Sin FTS5 la búsqueda sigue funcionando con el respaldo LIKE/fuzzy.
+        pass
+
+    # Marcar el índice como desactualizado cuando cambien las fuentes.
+    triggers = [
+        """
+        CREATE TRIGGER IF NOT EXISTS ion_inventario_ai
+        AFTER INSERT ON inventarioUnico
+        BEGIN
+            INSERT INTO ionIndiceMeta (clave, valor) VALUES ('dirty', '1')
+            ON CONFLICT(clave) DO UPDATE SET valor = '1';
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS ion_inventario_au
+        AFTER UPDATE ON inventarioUnico
+        BEGIN
+            INSERT INTO ionIndiceMeta (clave, valor) VALUES ('dirty', '1')
+            ON CONFLICT(clave) DO UPDATE SET valor = '1';
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS ion_inventario_ad
+        AFTER DELETE ON inventarioUnico
+        BEGIN
+            INSERT INTO ionIndiceMeta (clave, valor) VALUES ('dirty', '1')
+            ON CONFLICT(clave) DO UPDATE SET valor = '1';
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS ion_consolidado_ai
+        AFTER INSERT ON consolidado
+        BEGIN
+            INSERT INTO ionIndiceMeta (clave, valor) VALUES ('dirty', '1')
+            ON CONFLICT(clave) DO UPDATE SET valor = '1';
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS ion_consolidado_au
+        AFTER UPDATE ON consolidado
+        BEGIN
+            INSERT INTO ionIndiceMeta (clave, valor) VALUES ('dirty', '1')
+            ON CONFLICT(clave) DO UPDATE SET valor = '1';
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS ion_consolidado_ad
+        AFTER DELETE ON consolidado
+        BEGIN
+            INSERT INTO ionIndiceMeta (clave, valor) VALUES ('dirty', '1')
+            ON CONFLICT(clave) DO UPDATE SET valor = '1';
+        END
+        """,
+    ]
+    for sql in triggers:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass
+
+
 def migrar(conn):
     """Aplica todas las migraciones pendientes. Idempotente."""
 
@@ -487,6 +680,7 @@ def migrar(conn):
     _migrar_consolidado(conn)
     _migrar_inventario_estados(conn)
     _migrar_conteo_fisico(conn)
+    _migrar_ion(conn)
     conn.commit()
 
 

@@ -3,23 +3,654 @@
 {% from "includes/page_header.html" import encabezado_pagina %}
 {% from "includes/iconos.html" import icono %}
 
-{% block title %}ION{% endblock %}
+{% block title %}ION · Buscador de repuestos{% endblock %}
 
 {% block content %}
-{{ encabezado_pagina(
-    'Módulo ION',
-    'Espacio de integración y servicios ION de Toyonissan Popayán.',
+{% call encabezado_pagina(
+    'ION · Buscador de repuestos',
+    'Describe el repuesto tal como lo pide el cliente. ION prioriza lo disponible en Inventario y muestra Consolidado sólo como referencia.',
     'ion',
     [('Inicio', url_for('index')), ('ION', None)]
-) }}
+) %}
+    <a href="{{ url_for('ion.ion_conocimiento') }}" class="btn btn-outline-primary">
+        {{ icono('configuracion') }} Conocimiento
+    </a>
+    <button type="button" class="btn btn-outline-secondary" id="btnIonReindexar">
+        {{ icono('base-datos') }} Actualizar índice
+    </button>
+{% endcall %}
 
-<div class="card border-0 shadow-sm">
-    <div class="card-body text-center py-5">
-        <div class="d-flex justify-content-center mb-3">
-            <span class="page-title-icon">{{ icono('ion') }}</span>
+<div class="ion-wrap">
+
+    <section class="card border-0 shadow-sm ion-buscador">
+        <div class="card-body">
+            <label for="ionConsulta" class="form-label ion-etiqueta-principal">
+                Describe el repuesto que busca el cliente
+            </label>
+            <div class="ion-caja-consulta">
+                <textarea id="ionConsulta" class="form-control ion-textarea" rows="2"
+                          maxlength="400"
+                          placeholder="Ej.: juego de anillos para Hilux 2.5 diésel, farola derecha para Frontier 2015..."></textarea>
+                <button type="button" class="btn btn-primary ion-btn-buscar" id="btnIonBuscar">
+                    Buscar
+                </button>
+            </div>
+
+            <div class="ion-ejemplos" id="ionEjemplos">
+                <span class="ion-ejemplos-titulo">Prueba con:</span>
+                <button type="button" class="ion-chip-ejemplo" data-consulta="Juego de anillos">Juego de anillos</button>
+                <button type="button" class="ion-chip-ejemplo" data-consulta="Farola derecha para Frontier 2015">Farola derecha Frontier 2015</button>
+                <button type="button" class="ion-chip-ejemplo" data-consulta="Retén del cardán">Retén del cardán</button>
+                <button type="button" class="ion-chip-ejemplo" data-consulta="Vidrio de Hilux doble cabina">Vidrio Hilux doble cabina</button>
+                <button type="button" class="ion-chip-ejemplo" data-consulta="Correa de repartición 4x4 diésel">Correa repartición 4x4 diésel</button>
+            </div>
+
+            <div class="ion-estado" id="ionEstado" aria-live="polite"></div>
         </div>
-        <h2 class="h5">Módulo en preparación</h2>
-        <p class="text-muted mb-0">Aquí se integrarán las funciones y servicios de ION.</p>
+    </section>
+
+    <div id="ionResumen" class="ion-resumen d-none"></div>
+
+    <div id="ionPregunta" class="ion-pregunta d-none"></div>
+
+    <div id="ionMensaje" class="ion-mensaje d-none" role="alert"></div>
+
+    <div id="ionResultados">
+        <div class="ion-vacio">
+            <span class="ion-vacio-icono">{{ icono('ion') }}</span>
+            <h2 class="h6 mb-1">Escribe cómo lo pide el cliente</h2>
+            <p class="text-muted mb-0">
+                ION interpreta el nombre del repuesto, la referencia, el vehículo
+                y los datos técnicos. No inventa compatibilidades.
+            </p>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modal: agregar nombre alternativo -->
+<div class="modal fade" id="modalIonSinonimo" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="h6 modal-title mb-0">Agregar nombre alternativo</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">
+                    La sugerencia quedará <strong>pendiente de aprobación</strong>.
+                    No se usará en las búsquedas hasta que un administrador la apruebe.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label" for="ionSinonimoTermino">Cómo lo dice el cliente</label>
+                    <input type="text" class="form-control" id="ionSinonimoTermino" maxlength="160">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="ionSinonimoReemplazo">Nombre registrado en el catálogo</label>
+                    <input type="text" class="form-control" id="ionSinonimoReemplazo" maxlength="160">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label" for="ionSinonimoTipo">Tipo de conocimiento</label>
+                    <select class="form-select" id="ionSinonimoTipo">
+                        <option value="SINONIMO">Sinónimo</option>
+                        <option value="NOMBRE_POPULAR">Nombre popular</option>
+                        <option value="ABREVIATURA">Abreviatura</option>
+                        <option value="ERROR_FRECUENTE">Error frecuente de escritura</option>
+                        <option value="EQUIVALENTE">Referencia equivalente</option>
+                        <option value="MEDIDA">Medida</option>
+                        <option value="SISTEMA">Sistema del repuesto</option>
+                        <option value="POSICION">Posición</option>
+                    </select>
+                </div>
+                <div class="small text-muted" id="ionSinonimoMensaje"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnIonGuardarSinonimo">Enviar sugerencia</button>
+            </div>
+        </div>
     </div>
 </div>
+
+<!-- Modal: reportar resultado incorrecto -->
+<div class="modal fade" id="modalIonFeedback" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="h6 modal-title mb-0">Reportar resultado incorrecto</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label" for="ionFeedbackMotivo">¿Qué no corresponde?</label>
+                <textarea class="form-control" id="ionFeedbackMotivo" rows="3"
+                          maxlength="500"
+                          placeholder="Ej.: la compatibilidad indicada no es correcta, la referencia pertenece a otro modelo..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="btnIonEnviarFeedback">Enviar reporte</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+(function () {
+    "use strict";
+
+    const URL_BUSCAR = {{ url_for('ion.ion_buscar')|tojson }};
+    const URL_SELECCIONAR = {{ url_for('ion.ion_seleccionar')|tojson }};
+    const URL_FEEDBACK = {{ url_for('ion.ion_feedback')|tojson }};
+    const URL_SINONIMO = {{ url_for('ion.ion_sinonimo')|tojson }};
+    const URL_REINDEXAR = {{ url_for('ion.ion_reindexar')|tojson }};
+    const URL_INVENTARIO = {{ url_for('inventario.inventario_home')|tojson }};
+    const URL_CONSOLIDADO = {{ url_for('consolidado.consolidado_home')|tojson }};
+
+    const elConsulta = document.getElementById("ionConsulta");
+    const btnBuscar = document.getElementById("btnIonBuscar");
+    const btnReindexar = document.getElementById("btnIonReindexar");
+    const elEstado = document.getElementById("ionEstado");
+    const elResumen = document.getElementById("ionResumen");
+    const elPregunta = document.getElementById("ionPregunta");
+    const elMensaje = document.getElementById("ionMensaje");
+    const elResultados = document.getElementById("ionResultados");
+    const modalSinonimoEl = document.getElementById("modalIonSinonimo");
+    const modalFeedbackEl = document.getElementById("modalIonFeedback");
+
+    const modalSinonimo = modalSinonimoEl ? new bootstrap.Modal(modalSinonimoEl) : null;
+    const modalFeedback = modalFeedbackEl ? new bootstrap.Modal(modalFeedbackEl) : null;
+
+    const estado = {
+        idConsulta: null,
+        criterios: {},
+        ultimaConsulta: "",
+        resultados: [],
+        sinonimoItem: null,
+        feedbackItem: null
+    };
+
+    function esc(valor) {
+        return String(valor === null || valor === undefined ? "" : valor)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function mostrarEstado(texto, tipo) {
+        if (!texto) {
+            elEstado.innerHTML = "";
+            elEstado.className = "ion-estado";
+            return;
+        }
+        elEstado.innerHTML = '<span class="ion-estado-texto">' + esc(texto) + "</span>";
+        elEstado.className = "ion-estado ion-estado-" + (tipo || "info");
+    }
+
+    function mostrarMensaje(texto, tipo) {
+        if (!texto) {
+            elMensaje.className = "ion-mensaje d-none";
+            elMensaje.innerHTML = "";
+            return;
+        }
+        elMensaje.className = "ion-mensaje alert alert-" + (tipo || "info");
+        elMensaje.innerHTML = esc(texto);
+    }
+
+    function payloadBase(extra) {
+        return Object.assign({
+            consulta: elConsulta.value.trim(),
+            criterios: estado.criterios,
+            idConsulta: estado.idConsulta
+        }, extra || {});
+    }
+
+    async function pedir(url, datos) {
+        const respuesta = await fetch(url, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(datos)
+        });
+        const cuerpo = await respuesta.json().catch(function () { return {}; });
+        if (!respuesta.ok) {
+            throw new Error(cuerpo.mensaje || "No fue posible completar la solicitud.");
+        }
+        return cuerpo;
+    }
+
+    async function buscar(extra) {
+        const consulta = elConsulta.value.trim();
+        if (!consulta) {
+            mostrarEstado("Escribe cómo el cliente pide el repuesto.", "error");
+            elConsulta.focus();
+            return;
+        }
+
+        if (!extra || !extra.respuestaCampo) {
+            estado.idConsulta = null;
+            estado.criterios = {};
+        }
+
+        btnBuscar.disabled = true;
+        mostrarEstado("Buscando en Inventario y Consolidado...", "info");
+        mostrarMensaje("");
+
+        try {
+            const resultado = await pedir(URL_BUSCAR, payloadBase(extra));
+            estado.idConsulta = resultado.idConsulta;
+            estado.ultimaConsulta = resultado.interpretacion.consulta;
+            estado.resultados = (resultado.inventario || []).concat(resultado.consolidado || []);
+            pintarResumen(resultado);
+            pintarPregunta(resultado.pregunta);
+            pintarResultados(resultado);
+            mostrarEstado(
+                resultado.sinResultados
+                    ? "Sin resultados. Prueba con otro nombre, una referencia o menos datos."
+                    : "Búsqueda completada. Inventario: " + (resultado.totalInventario || 0) +
+                      " · Consolidado: " + (resultado.totalConsolidado || 0) +
+                      " · Índice: " + (resultado.indice || "-"),
+                resultado.sinResultados ? "error" : "ok"
+            );
+        } catch (error) {
+            mostrarEstado(error.message, "error");
+        } finally {
+            btnBuscar.disabled = false;
+        }
+    }
+
+    function pintarResumen(resultado) {
+        const interpretacion = resultado.interpretacion || {};
+        const criterios = interpretacion.criterios || {};
+        const partes = [];
+
+        if (interpretacion.repuesto) {
+            partes.push('<span class="ion-chip ion-chip-principal">Interpretado: ' + esc(interpretacion.repuesto) + "</span>");
+        }
+        Object.keys(criterios).forEach(function (campo) {
+            partes.push('<span class="ion-chip">' + esc(campo) + ": " + esc(criterios[campo]) + "</span>");
+        });
+        if (interpretacion.tokens && interpretacion.tokens.length) {
+            partes.push('<span class="ion-chip ion-chip-suave">Términos: ' + esc(interpretacion.tokens.join(", ")) + "</span>");
+        }
+
+        if (!partes.length) {
+            elResumen.className = "ion-resumen d-none";
+            elResumen.innerHTML = "";
+            return;
+        }
+        elResumen.className = "ion-resumen";
+        elResumen.innerHTML = '<span class="ion-resumen-titulo">Criterios interpretados</span>' + partes.join("");
+    }
+
+    function pintarPregunta(pregunta) {
+        if (!pregunta) {
+            elPregunta.className = "ion-pregunta d-none";
+            elPregunta.innerHTML = "";
+            return;
+        }
+
+        const opciones = (pregunta.opciones || []).map(function (opcion) {
+            return '<button type="button" class="btn btn-outline-primary ion-opcion" ' +
+                'data-campo="' + esc(pregunta.campo) + '" ' +
+                'data-valor="' + esc(opcion.valor) + '" ' +
+                'data-etiqueta="' + esc(opcion.etiqueta) + '">' +
+                esc(opcion.etiqueta) +
+                (opcion.cantidad ? ' <span class="ion-opcion-cantidad">(' + opcion.cantidad + ")</span>" : "") +
+                "</button>";
+        }).join("");
+
+        elPregunta.className = "ion-pregunta";
+        elPregunta.innerHTML =
+            '<div class="ion-pregunta-icono">?</div>' +
+            '<div class="ion-pregunta-cuerpo">' +
+                '<p class="ion-pregunta-texto">' + esc(pregunta.pregunta) + "</p>" +
+                '<div class="ion-opciones">' + opciones + "</div>" +
+            "</div>";
+    }
+
+    function nivelBadge(nivel) {
+        const texto = (nivel || "baja").toLowerCase();
+        return '<span class="ion-nivel ion-nivel-' + esc(texto) + '">Coincidencia ' + esc(texto) + "</span>";
+    }
+
+    function chipsCoincidentes(item) {
+        const coincidentes = item.coincidentes || [];
+        const pendientes = item.pendientes || [];
+        let html = "";
+        if (coincidentes.length) {
+            html += '<div class="ion-datos-grupo"><span class="ion-datos-titulo">Coincide en</span>' +
+                coincidentes.map(function (dato) {
+                    return '<span class="ion-dato ion-dato-ok">' + esc(dato) + "</span>";
+                }).join("") + "</div>";
+        }
+        if (pendientes.length) {
+            html += '<div class="ion-datos-grupo"><span class="ion-datos-titulo">Por confirmar</span>' +
+                pendientes.map(function (dato) {
+                    return '<span class="ion-dato ion-dato-pendiente">' + esc(dato) + "</span>";
+                }).join("") + "</div>";
+        }
+        return html;
+    }
+
+    function acciones(item, indice) {
+        const id = "ion-resultado-" + indice;
+        return '<div class="ion-acciones">' +
+            '<button type="button" class="btn btn-sm btn-success ion-accion-seleccionar" ' +
+                'data-indice="' + indice + '">Este es el repuesto</button>' +
+            (item.tipo === "INVENTARIO"
+                ? '<a class="btn btn-sm btn-outline-primary" href="' + URL_INVENTARIO +
+                    "?codigo=" + encodeURIComponent(item.codigoBarras || "") + '">Ver en Inventario</a>'
+                : '<a class="btn btn-sm btn-outline-primary" href="' + URL_CONSOLIDADO +
+                    "?referencia_proveedor=" + encodeURIComponent(item.referencia || "") + '">Ver en Consolidado</a>') +
+            '<button type="button" class="btn btn-sm btn-outline-secondary ion-accion-sinonimo" ' +
+                'data-indice="' + indice + '">Agregar nombre alternativo</button>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger ion-accion-reportar" ' +
+                'data-indice="' + indice + '">Reportar resultado incorrecto</button>' +
+            "</div>";
+    }
+
+    function tarjetaInventario(item, indice) {
+        const referencias = (item.referencias || []).join(", ");
+        return '<article class="ion-tarjeta ion-tarjeta-inventario" id="ion-resultado-' + indice + '">' +
+            '<div class="ion-tarjeta-cabecera">' +
+                '<div>' +
+                    nivelBadge(item.nivel) +
+                    '<h3 class="ion-tarjeta-titulo">' + esc(item.descripcion) + "</h3>" +
+                    '<p class="ion-tarjeta-interpretado">Nombre interpretado: <strong>' + esc(item.nombreInterpretado) + "</strong></p>" +
+                "</div>" +
+                '<span class="ion-disponibilidad ion-disponibilidad-' + (item.disponible ? "si" : "no") + '">' +
+                    esc(item.estado) + "</span>" +
+            "</div>" +
+            '<div class="ion-tarjeta-datos">' +
+                '<div><span>Código de barras</span><strong>' + esc(item.codigoBarras || "-") + "</strong></div>" +
+                '<div><span>Referencias</span><strong>' + esc(referencias || item.referencia || "-") + "</strong></div>" +
+                '<div class="ion-dato-ancho"><span>Compatibilidad</span><strong>' + esc(item.compatibilidad || "No registrada") + "</strong></div>" +
+                '<div><span>Cantidad</span><strong>' + esc(item.cantidad) + "</strong></div>" +
+                '<div><span>Precio</span><strong>' + esc(item.precioTexto) + "</strong></div>" +
+                '<div><span>Ubicación</span><strong>' + esc(item.ubicacion || "No registrada") + "</strong></div>" +
+                '<div><span>Estante</span><strong>' + esc(item.estante || "No registrado") + "</strong></div>" +
+                '<div><span>Proveedor</span><strong>' + esc(item.proveedor || "-") + "</strong></div>" +
+            "</div>" +
+            chipsCoincidentes(item) +
+            '<p class="ion-explicacion">' + esc(item.explicacion) + "</p>" +
+            acciones(item, indice) +
+        "</article>";
+    }
+
+    function tarjetaConsolidado(item, indice) {
+        const referencias = (item.referencias || []).join(", ");
+        return '<article class="ion-tarjeta ion-tarjeta-consolidado" id="ion-resultado-' + indice + '">' +
+            '<div class="ion-tarjeta-cabecera">' +
+                '<div>' +
+                    nivelBadge(item.nivel) +
+                    '<h3 class="ion-tarjeta-titulo">' + esc(item.descripcion) + "</h3>" +
+                    '<p class="ion-tarjeta-interpretado">Nombre interpretado: <strong>' + esc(item.nombreInterpretado) + "</strong></p>" +
+                "</div>" +
+                '<span class="ion-disponibilidad ion-disponibilidad-no">No disponible en el local</span>' +
+            "</div>" +
+            '<div class="ion-tarjeta-datos">' +
+                '<div><span>Referencias / equivalente</span><strong>' + esc(referencias || item.equivalente || "-") + "</strong></div>" +
+                '<div><span>Proveedor</span><strong>' + esc(item.proveedor || "-") + "</strong></div>" +
+                '<div class="ion-dato-ancho"><span>Compatibilidad</span><strong>' + esc(item.compatibilidad || "No registrada") + "</strong></div>" +
+                '<div><span>Estado en Consolidado</span><strong>' + esc(item.estado || "-") + "</strong></div>" +
+            "</div>" +
+            chipsCoincidentes(item) +
+            '<div class="ion-aviso-consolidado">' + esc(item.mensaje) + "</div>" +
+            '<p class="ion-explicacion">' + esc(item.explicacion) + "</p>" +
+            acciones(item, indice) +
+        "</article>";
+    }
+
+    function pintarResultados(resultado) {
+        const inventario = resultado.inventario || [];
+        const consolidado = resultado.consolidado || [];
+        let html = "";
+
+        if (inventario.length) {
+            html += '<section class="ion-bloque ion-bloque-inventario">' +
+                '<div class="ion-bloque-cabecera">' +
+                    '<h2 class="ion-bloque-titulo">Disponible en Inventario</h2>' +
+                    '<span class="ion-bloque-contador">' + inventario.length + " resultado(s)</span>" +
+                "</div>" +
+                '<p class="ion-bloque-descripcion">Artículos administrados físicamente en el local.</p>' +
+                inventario.map(function (item, posicion) {
+                    return tarjetaInventario(item, posicion);
+                }).join("") +
+            "</section>";
+        }
+
+        if (consolidado.length) {
+            html += '<section class="ion-bloque ion-bloque-consolidado">' +
+                '<div class="ion-bloque-cabecera">' +
+                    '<h2 class="ion-bloque-titulo">Encontrado en Consolidado, pero no inventariado</h2>' +
+                    '<span class="ion-bloque-contador">' + consolidado.length + " resultado(s)</span>" +
+                "</div>" +
+                '<p class="ion-bloque-descripcion">Existe en el catálogo de proveedores, pero todavía no está disponible para venta en el local.</p>' +
+                consolidado.map(function (item, posicion) {
+                    return tarjetaConsolidado(item, inventario.length + posicion);
+                }).join("") +
+            "</section>";
+        }
+
+        if (!html) {
+            html = '<div class="ion-sin-resultados">' +
+                '<h2 class="h6">No encontramos un repuesto que coincida</h2>' +
+                '<p class="text-muted mb-2">ION no inventa compatibilidades. Prueba con:</p>' +
+                '<ul class="text-muted small mb-3">' +
+                    "<li>El nombre técnico o popular del repuesto.</li>" +
+                    "<li>La referencia o el código de barras.</li>" +
+                    "<li>Marca, modelo, motor o año del vehículo.</li>" +
+                "</ul>" +
+                '<button type="button" class="btn btn-outline-danger btn-sm ion-accion-ninguno">' +
+                    "Ninguno corresponde</button>" +
+            "</div>";
+        } else {
+            html += '<div class="ion-acciones-finales">' +
+                '<button type="button" class="btn btn-outline-danger ion-accion-ninguno">Ninguno corresponde</button>' +
+                '<button type="button" class="btn btn-outline-secondary ion-accion-reportar-general">Reportar resultado incorrecto</button>' +
+            "</div>";
+        }
+
+        elResultados.innerHTML = html;
+    }
+
+    function indiceDesdeEvento(boton) {
+        const indice = parseInt(boton.getAttribute("data-indice"), 10);
+        return Number.isNaN(indice) ? null : indice;
+    }
+
+    async function seleccionar(item) {
+        if (!estado.idConsulta || !item) {
+            return;
+        }
+        try {
+            const respuesta = await pedir(URL_SELECCIONAR, {
+                idConsulta: estado.idConsulta,
+                idResultado: item.id,
+                tipoResultado: item.tipo
+            });
+            mostrarMensaje(respuesta.mensaje || "Selección registrada.", "success");
+        } catch (error) {
+            mostrarMensaje(error.message, "danger");
+        }
+    }
+
+    function abrirSinonimo(item) {
+        estado.sinonimoItem = item;
+        document.getElementById("ionSinonimoTermino").value = elConsulta.value.trim();
+        document.getElementById("ionSinonimoReemplazo").value = item ? item.descripcion : "";
+        document.getElementById("ionSinonimoMensaje").textContent = "";
+        if (modalSinonimo) {
+            modalSinonimo.show();
+        }
+    }
+
+    function abrirFeedback(item) {
+        estado.feedbackItem = item;
+        document.getElementById("ionFeedbackMotivo").value = "";
+        if (modalFeedback) {
+            modalFeedback.show();
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Eventos
+    // ------------------------------------------------------------------
+    btnBuscar.addEventListener("click", function () { buscar(); });
+
+    elConsulta.addEventListener("keydown", function (evento) {
+        if ((evento.ctrlKey || evento.metaKey) && evento.key === "Enter") {
+            evento.preventDefault();
+            buscar();
+        }
+        if (evento.key === "Enter" && !evento.shiftKey) {
+            evento.preventDefault();
+            buscar();
+        }
+    });
+
+    document.getElementById("ionEjemplos").addEventListener("click", function (evento) {
+        const boton = evento.target.closest("[data-consulta]");
+        if (!boton) {
+            return;
+        }
+        elConsulta.value = boton.getAttribute("data-consulta");
+        buscar();
+    });
+
+    elPregunta.addEventListener("click", function (evento) {
+        const boton = evento.target.closest(".ion-opcion");
+        if (!boton) {
+            return;
+        }
+        const campo = boton.getAttribute("data-campo");
+        const valor = boton.getAttribute("data-valor");
+        const etiqueta = boton.getAttribute("data-etiqueta");
+        estado.criterios[campo] = valor;
+        buscar({
+            respuestaCampo: campo,
+            respuestaValor: valor,
+            respuestaTexto: etiqueta
+        });
+    });
+
+    elResultados.addEventListener("click", function (evento) {
+        const botonSeleccion = evento.target.closest(".ion-accion-seleccionar");
+        if (botonSeleccion) {
+            seleccionar(estado.resultados[indiceDesdeEvento(botonSeleccion)]);
+            return;
+        }
+
+        const botonSinonimo = evento.target.closest(".ion-accion-sinonimo");
+        if (botonSinonimo) {
+            abrirSinonimo(estado.resultados[indiceDesdeEvento(botonSinonimo)]);
+            return;
+        }
+
+        const botonReporte = evento.target.closest(".ion-accion-reportar");
+        if (botonReporte) {
+            abrirFeedback(estado.resultados[indiceDesdeEvento(botonReporte)]);
+            return;
+        }
+
+        if (evento.target.closest(".ion-accion-ninguno")) {
+            reportarNinguno();
+            return;
+        }
+
+        if (evento.target.closest(".ion-accion-reportar-general")) {
+            abrirFeedback(null);
+        }
+    });
+
+    async function reportarNinguno() {
+        if (!estado.idConsulta) {
+            mostrarMensaje("Primero realiza una búsqueda.", "warning");
+            return;
+        }
+        try {
+            const respuesta = await pedir(URL_FEEDBACK, {
+                idConsulta: estado.idConsulta,
+                tipo: "NINGUNO"
+            });
+            mostrarMensaje(respuesta.mensaje, "warning");
+        } catch (error) {
+            mostrarMensaje(error.message, "danger");
+        }
+    }
+
+    document.getElementById("btnIonGuardarSinonimo").addEventListener("click", async function () {
+        const termino = document.getElementById("ionSinonimoTermino").value.trim();
+        const reemplazo = document.getElementById("ionSinonimoReemplazo").value.trim();
+        const tipo = document.getElementById("ionSinonimoTipo").value;
+        const mensaje = document.getElementById("ionSinonimoMensaje");
+
+        if (!termino || !reemplazo) {
+            mensaje.textContent = "Completa ambos campos.";
+            mensaje.className = "small text-danger";
+            return;
+        }
+
+        try {
+            const respuesta = await pedir(URL_SINONIMO, {
+                termino: termino,
+                reemplazo: reemplazo,
+                tipo: tipo,
+                idConsulta: estado.idConsulta
+            });
+            mensaje.textContent = respuesta.mensaje || "Sugerencia registrada.";
+            mensaje.className = "small text-success";
+            setTimeout(function () {
+                if (modalSinonimo) {
+                    modalSinonimo.hide();
+                }
+            }, 1400);
+        } catch (error) {
+            mensaje.textContent = error.message;
+            mensaje.className = "small text-danger";
+        }
+    });
+
+    document.getElementById("btnIonEnviarFeedback").addEventListener("click", async function () {
+        const motivo = document.getElementById("ionFeedbackMotivo").value.trim();
+        const item = estado.feedbackItem;
+
+        try {
+            const respuesta = await pedir(URL_FEEDBACK, {
+                idConsulta: estado.idConsulta,
+                tipo: "INCORRECTO",
+                idResultado: item ? item.id : null,
+                tipoResultado: item ? item.tipo : null,
+                motivo: motivo
+            });
+            mostrarMensaje(respuesta.mensaje, "success");
+            if (modalFeedback) {
+                modalFeedback.hide();
+            }
+        } catch (error) {
+            mostrarMensaje(error.message, "danger");
+        }
+    });
+
+    btnReindexar.addEventListener("click", async function () {
+        btnReindexar.disabled = true;
+        mostrarEstado("Reconstruyendo el índice de búsqueda...", "info");
+        try {
+            const respuesta = await pedir(URL_REINDEXAR, {});
+            mostrarEstado(
+                "Índice actualizado: " + respuesta.inventario + " artículos de Inventario y " +
+                respuesta.consolidado + " registros de Consolidado.",
+                "ok"
+            );
+        } catch (error) {
+            mostrarEstado(error.message, "error");
+        } finally {
+            btnReindexar.disabled = false;
+        }
+    });
+})();
+</script>
 {% endblock %}
