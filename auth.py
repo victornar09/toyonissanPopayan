@@ -11,6 +11,7 @@ def login():
         password = request.form['clave']
 
         if username in USUARIOS and check_password_hash(USUARIOS[username], password):
+            session.clear()
             session['usuario'] = username
             return redirect(url_for('index'))
         else:
@@ -20,5 +21,5 @@ def login():
 
 @auth.route('/logout')
 def logout():
-    session.pop('usuario', None)
+    session.clear()
     return redirect(url_for('auth.login'))

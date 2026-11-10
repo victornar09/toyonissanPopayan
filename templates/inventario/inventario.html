@@ -282,7 +282,7 @@
                             <span class="texto-truncado fw-semibold" title="{{ item.codigoBarras or 'Sin código' }}">{{ item.codigoBarras or '—' }}</span>
                         </td>
                         <td class="col-inv-desc">
-                            <span class="texto-truncado" title="{{ item.descripcion or '' }}">{{ item.descripcion or '—' }}</span>
+                            <span class="descripcion-estandarizada" title="{{ item.descripcion or '' }}">{{ item.descripcion or '—' }}</span>
                         </td>
                         <td class="col-inv-cantidad">
                             {% set cantidad = item.cantidad or 0 %}

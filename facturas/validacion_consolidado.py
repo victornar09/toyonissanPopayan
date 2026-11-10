@@ -57,7 +57,7 @@ def buscar_consolidado_por_proveedor_ref(conn, siglas_abrev: str, referencia_pro
                referenciaRepuesto, equivalente, descripcion, marca, carro,
                tipo, tipoMotor, precioListado, proveedor, lado, ladoAbreviado,
                repuesto, modelo, otros, medida, descripcionEstandarizada,
-               fechaActualizacion
+               grupo, fechaActualizacion
         FROM consolidado
         WHERE UPPER(TRIM(abrevProveedor)) = ? AND UPPER(TRIM(referenciaProveedor)) = ?
         """,
@@ -257,6 +257,7 @@ def obtener_estado_linea(
         "ladoAbreviado": reg.get("ladoAbreviado"),
         "otros": reg.get("otros"),
         "precioListado": reg.get("precioListado"),
+        "grupo": reg.get("grupo"),
         "id_consolidado": reg.get("id"),
     }
     return {

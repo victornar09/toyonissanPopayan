@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS inventarioFacturas (
     referencia TEXT,
     inventariado BOOLEAN DEFAULT 0,
     id_inventarioUnico INTEGER,
-    id_consolidado INTEGER
+    id_consolidado INTEGER,
+    referenciaOriginal TEXT,
+    referenciaCorregida TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invf_llave
@@ -58,6 +60,15 @@ CREATE TABLE IF NOT EXISTS inventarioUnico (
     referencia VARCHAR(100),
     descripcion TEXT,
     descripcionClave TEXT,
+    descripcionEstandarizada TEXT,
+    referenciaProveedor TEXT,
+    referenciaRepuesto TEXT,
+    equivalente TEXT,
+    marcaArticulo TEXT,
+    marcaVehiculo TEXT,
+    modelo TEXT,
+    lado TEXT,
+    medida TEXT,
     cantidad INTEGER,
     precioVenta REAL,
     precioVentaCifrado TEXT,
@@ -456,3 +467,53 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ionIndice USING fts5(
     contenido,
     tokenize = 'unicode61 remove_diacritics 2'
 );
+
+-- ============================================================================
+-- Cola de impresión centralizada (BarTender en el servidor)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS trabajoImpresion (
+    idTrabajo INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario TEXT,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fechaInicio DATETIME,
+    fechaFin DATETIME,
+    articulos TEXT NOT NULL,
+    cantidades TEXT,
+    idPlantilla INTEGER,
+    plantilla TEXT,
+    rutaPlantilla TEXT,
+    archivoTemporal TEXT,
+    columnaInicio INTEGER NOT NULL DEFAULT 1,
+    origen TEXT,
+    estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+    mensajeError TEXT,
+    intentos INTEGER NOT NULL DEFAULT 0,
+    claveUnica TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_trabajo_impresion_estado
+ON trabajoImpresion (estado, fecha);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_trabajo_impresion_clave
+ON trabajoImpresion (claveUnica);
+
+-- ============================================================================
+-- Auditoría de operaciones importantes
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS auditoria (
+    idAuditoria INTEGER PRIMARY KEY AUTOINCREMENT,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    usuario TEXT,
+    ip TEXT,
+    equipo TEXT,
+    metodo TEXT,
+    ruta TEXT,
+    accion TEXT,
+    detalle TEXT,
+    estadoHttp INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_auditoria_fecha
+ON auditoria (fecha);

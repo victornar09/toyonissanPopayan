@@ -196,8 +196,10 @@ def _advertencias_secundarias(conn, referencia, descripcion):
     return advertencias
 
 
-def _fallback_estandarizar(df):
+def _fallback_estandarizar(df, campos_manuales=None):
     """Estandarización mínima cuando el archivo de reglas no está disponible."""
+
+    campos_manuales = set(campos_manuales or ())
 
     def _simple(valor):
         texto = _texto(valor)
@@ -208,16 +210,28 @@ def _fallback_estandarizar(df):
         texto = re.sub(r"[^A-Z0-9]+", " ", texto)
         return re.sub(r"\s+", " ", texto).strip()
 
-    df["descripcionEstandarizada"] = df["descripcion"].apply(_simple)
+    if "descripcionEstandarizada" in campos_manuales:
+        df["descripcionEstandarizada"] = df.apply(
+            lambda fila: (
+                _texto(fila.get("descripcionEstandarizada"))
+                or _simple(fila.get("descripcion"))
+            ),
+            axis=1,
+        )
+    else:
+        df["descripcionEstandarizada"] = df["descripcion"].apply(_simple)
+
     if "repuesto" not in df.columns:
         df["repuesto"] = ""
-    df["repuesto"] = df["repuesto"].apply(
-        lambda v: _simple(v) if _texto(v) else ""
+    df["repuesto"] = df.apply(
+        lambda fila: (
+            _texto(fila.get("repuesto"))
+            or _simple(fila.get("descripcionEstandarizada"))
+        ),
+        axis=1,
     )
-    df.loc[df["repuesto"].astype(str).str.strip() == "", "repuesto"] = (
-        df["descripcionEstandarizada"]
-    )
-    for columna in ("lado", "ladoAbreviado", "modelo", "otros", "medida"):
+
+    for columna in ("lado", "ladoAbreviado", "modelo", "otros", "medida", "grupo"):
         if columna not in df.columns:
             df[columna] = ""
         df[columna] = df[columna].apply(
@@ -226,7 +240,7 @@ def _fallback_estandarizar(df):
     return df
 
 
-def _estandarizar(filas, ruta_estandarizacion=None):
+def _estandarizar(filas, ruta_estandarizacion=None, campos_manuales=None):
     """Aplica ``procesamiento.consolidado`` a una lista de diccionarios."""
 
     if not filas:
@@ -249,14 +263,16 @@ def _estandarizar(filas, ruta_estandarizacion=None):
         try:
             from procesamiento.consolidado import procesar_dataframe_pendientes
 
-            df = procesar_dataframe_pendientes(df, ruta)
+            df = procesar_dataframe_pendientes(
+                df, ruta, campos_manuales=campos_manuales
+            )
         except Exception:
-            df = _fallback_estandarizar(df)
+            df = _fallback_estandarizar(df, campos_manuales)
     else:
-        df = _fallback_estandarizar(df)
+        df = _fallback_estandarizar(df, campos_manuales)
 
     if "descripcionEstandarizada" not in df.columns:
-        df = _fallback_estandarizar(df)
+        df = _fallback_estandarizar(df, campos_manuales)
 
     return df.to_dict("records")
 
@@ -351,21 +367,27 @@ def _lineas_por_facturas(conn, ids_factura):
         cur.execute(
             f"""
             SELECT id, id_factura, referencia, descripcion_item,
-                   valor_unitario, id_consolidado
+                   valor_unitario, id_consolidado,
+                   referenciaOriginal, referenciaCorregida
             FROM inventarioFacturas
             WHERE id_factura IN ({marcadores})
             """,
             tuple(lote),
         )
         for fila in cur.fetchall():
+            referencia = (
+                _texto(fila[7]) or _texto(fila[2])
+            )
             resultado.setdefault(fila[1], []).append(
                 {
                     "id": fila[0],
                     "id_factura": fila[1],
-                    "referencia": fila[2],
+                    "referencia": referencia,
                     "descripcion_item": fila[3],
                     "valor_unitario": fila[4],
                     "id_consolidado": fila[5],
+                    "referenciaOriginal": _texto(fila[6]) or _texto(fila[2]),
+                    "referenciaCorregida": _texto(fila[7]),
                 }
             )
 
@@ -707,7 +729,8 @@ def _vincular_linea(conn, linea_id, consolidado_id):
     conn.execute(
         """
         UPDATE inventarioFacturas
-        SET id_consolidado = ?
+        SET id_consolidado = ?,
+            referenciaOriginal = COALESCE(referenciaOriginal, referencia)
         WHERE id = ?
         """,
         (consolidado_id, linea_id),
@@ -759,13 +782,31 @@ def editar_consolidado(
                 ),
             }
 
-        estandar = _estandarizar([merged], ruta_estandarizacion)
+        campos_manuales = {
+            campo for campo in datos.keys() if campo in CAMPOS_EDITABLES
+        }
+        estandar = _estandarizar(
+            [merged], ruta_estandarizacion, campos_manuales=campos_manuales
+        )
         calculado = estandar[0] if estandar else {}
 
+        # Los campos calculados sólo completan lo que sigue vacío. Nunca
+        # reemplazan un valor manual o un dato válido ya guardado.
         for campo in CAMPOS_ESTANDARIZADOS:
             valor = _texto(calculado.get(campo))
-            if valor:
+            if valor and not _texto(merged.get(campo)):
                 merged[campo] = valor
+
+        # Si el usuario corrigió la descripción, la descripción estandarizada
+        # es un valor derivado: se recalcula salvo que se haya enviado
+        # explícitamente como dato manual.
+        if (
+            "descripcion" in campos_manuales
+            and "descripcionEstandarizada" not in campos_manuales
+        ):
+            nueva_estandar = _texto(calculado.get("descripcionEstandarizada"))
+            if nueva_estandar:
+                merged["descripcionEstandarizada"] = nueva_estandar
 
         if not _texto(merged.get("descripcionEstandarizada")):
             merged["descripcionEstandarizada"] = normalizar_clave(
@@ -897,6 +938,11 @@ def inventariar_consolidado(
     conn = db.conectar(ruta_db)
     try:
         migraciones.migrar(conn)
+        # Serializa el inventariado: evita que dos envíos simultáneos creen
+        # dos artículos para el mismo registro de Consolidado.
+        if conn.in_transaction:
+            conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
         cur = conn.cursor()
 
         for consolidado_id in ids_limpios:
@@ -970,12 +1016,24 @@ def inventariar_consolidado(
             if costo in (None, ""):
                 costo = fila.get("precioListado")
 
+            datos_operativos = {
+                "descripcionEstandarizada": descripcion,
+                "referenciaProveedor": fila.get("referenciaProveedor"),
+                "referenciaRepuesto": fila.get("referenciaRepuesto"),
+                "equivalente": fila.get("equivalente"),
+                "marcaArticulo": fila.get("marca"),
+                "marcaVehiculo": fila.get("carro"),
+                "modelo": fila.get("modelo"),
+                "lado": fila.get("lado"),
+                "medida": fila.get("medida"),
+            }
+
             articulo = obtener_o_crear_articulo(
                 conn,
                 descripcion=descripcion,
                 descripcion_clave=clave,
-                referencia=fila.get("referenciaRepuesto")
-                or fila.get("referenciaProveedor"),
+                referencia=fila.get("referenciaProveedor")
+                or fila.get("referenciaRepuesto"),
                 proveedor=fila.get("proveedor") or "",
                 precio_venta=precio_venta,
                 precio_cifrado=precio_cifrado,
@@ -987,6 +1045,7 @@ def inventariar_consolidado(
                 fecha=date.today().strftime("%Y-%m-%d"),
                 cantidad=0,
                 sumar_cantidad=False,
+                datos_operativos=datos_operativos,
             )
 
             cur.execute(
@@ -1009,6 +1068,13 @@ def inventariar_consolidado(
                     articulo["id"],
                 ),
             )
+            if cur.rowcount == 0:
+                # Otro proceso lo inventarió entre la validación y el UPDATE.
+                resultado["omitidos"] += 1
+                resultado["detalle"].append(
+                    {"id": consolidado_id, "motivo": "Ya estaba inventariado."}
+                )
+                continue
 
             _vincular_lineas_por_clave(conn, fila, consolidado_id)
 
@@ -1059,8 +1125,10 @@ def _vincular_lineas_por_clave(conn, fila, consolidado_id):
     conn.execute(
         """
         UPDATE inventarioFacturas
-        SET id_consolidado = ?
-        WHERE UPPER(TRIM(referencia)) = ?
+        SET id_consolidado = ?,
+            referenciaOriginal = COALESCE(referenciaOriginal, referencia)
+        WHERE UPPER(TRIM(COALESCE(NULLIF(TRIM(referenciaCorregida), ''),
+                                   referencia))) = ?
           AND (id_consolidado IS NULL OR id_consolidado = ?)
           AND EXISTS (
               SELECT 1 FROM facturas f

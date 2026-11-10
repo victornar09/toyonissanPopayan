@@ -20,41 +20,12 @@ from io import BytesIO, StringIO
 from PIL import Image
 from reportlab.platypus import Paragraph, Frame
 from reportlab.lib.styles import getSampleStyleSheet
-import win32com.client
 
 import db
 from utilidades import cifrar_precio, a_entero, normalizar_clave
 from consolidado.servicio_inventario import obtener_o_crear_articulo
 from inventario import respaldo, servicio_conteo
-
-
-def imprimir_varios(productos, ruta_template, columna_inicio=1):
-    # CSV temporal (BarTender lo lee)
-    ruta_csv = os.path.abspath("productos_temp.csv")
-
-    with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
-        for codigo, descripcion, precio, cantidad in productos:
-            writer.writerow([
-                codigo,
-                descripcion,
-                precio,
-                cantidad,
-                columna_inicio
-            ])
-
-    bt = win32com.client.Dispatch("BarTender.Application")
-    bt.Visible = True
-
-    # Abrir template dinámico
-    formato = bt.Formats.Open(
-        os.path.abspath(ruta_template),
-        False,
-        ""
-    )
-
-    formato.PrintOut(False, False)
+from impresion import servicio as impresion_servicio
 
 
 def _actualizar_inventario_desde_facturas(ruta_db):
@@ -80,7 +51,9 @@ def _actualizar_inventario_desde_facturas(ruta_db):
                 b.proveedor,
                 b.fecha,
                 a.inventariado,
-                a.id_inventarioUnico
+                a.id_inventarioUnico,
+                a.referenciaOriginal,
+                a.referenciaCorregida
             FROM inventarioFacturas a
             LEFT JOIN facturas b ON a.id_factura = b.id_factura
             ORDER BY b.fecha DESC
@@ -90,8 +63,23 @@ def _actualizar_inventario_desde_facturas(ruta_db):
             (
                 id_fila, descripcion_item, cantidad,
                 valor_unitario, referencia, proveedor, fecha,
-                inventariado, id_inventario_unico
+                inventariado, id_inventario_unico,
+                referencia_original, referencia_corregida
             ) = fila
+
+            referencia = (
+                (referencia_corregida or '').strip()
+                or (referencia or '').strip()
+            )
+            referencia_original = (
+                (referencia_original or '').strip()
+                or (referencia or '').strip()
+            )
+
+            linea_validacion = (
+                id_fila, referencia, descripcion_item, cantidad,
+                valor_unitario, inventariado, id_inventario_unico,
+            )
 
             if inventariado == 1 or inventariado is True:
                 continue
@@ -101,7 +89,9 @@ def _actualizar_inventario_desde_facturas(ruta_db):
                 if cur2.fetchone():
                     continue
 
-            estado = obtener_estado_linea(conn, (proveedor, fecha, None, None, None), fila)
+            estado = obtener_estado_linea(
+                conn, (proveedor, fecha, None, None, None), linea_validacion
+            )
             if not estado.get('permitido'):
                 continue
 
@@ -115,6 +105,19 @@ def _actualizar_inventario_desde_facturas(ruta_db):
             precio_max_desc = round(precio_venta * 0.9, 0)
             precio_cifrado = cifrar_precio(precio_venta)
             prov_use = datos_est.get('proveedor') or proveedor or ''
+            datos_operativos = {
+                "descripcionEstandarizada": (
+                    datos_est.get('descripcionEstandarizada') or descripcion_est
+                ),
+                "referenciaProveedor": referencia,
+                "referenciaRepuesto": datos_est.get('referenciaRepuesto'),
+                "equivalente": datos_est.get('equivalente'),
+                "marcaArticulo": datos_est.get('marca'),
+                "marcaVehiculo": datos_est.get('carro'),
+                "modelo": datos_est.get('modelo'),
+                "lado": datos_est.get('lado'),
+                "medida": datos_est.get('medida'),
+            }
 
             nuevo_id = obtener_o_crear_articulo(
                 conn,
@@ -125,10 +128,11 @@ def _actualizar_inventario_desde_facturas(ruta_db):
                 precio_venta=precio_venta,
                 precio_cifrado=precio_cifrado,
                 precio_max_descuento=precio_max_desc,
-                grupo=None,
+                grupo=datos_est.get('grupo') or None,
                 fecha=fecha or str(date.today()),
                 cantidad=a_entero(cantidad, 0),
                 sumar_cantidad=True,
+                datos_operativos=datos_operativos,
             )['id']
             if not nuevo_id:
                 continue
@@ -137,9 +141,23 @@ def _actualizar_inventario_desde_facturas(ruta_db):
                 UPDATE inventarioFacturas
                 SET inventariado = 1,
                     id_inventarioUnico = ?,
-                    id_consolidado = COALESCE(?, id_consolidado)
+                    id_consolidado = COALESCE(?, id_consolidado),
+                    referenciaOriginal = COALESCE(referenciaOriginal, ?),
+                    referenciaCorregida = CASE
+                        WHEN UPPER(TRIM(?)) <> UPPER(TRIM(?)) THEN ?
+                        ELSE referenciaCorregida END,
+                    referencia = ?
                 WHERE id = ?
-            """, (nuevo_id, datos_est.get('id_consolidado'), id_fila))
+            """, (
+                nuevo_id,
+                datos_est.get('id_consolidado'),
+                referencia_original,
+                referencia,
+                referencia_original,
+                referencia,
+                referencia,
+                id_fila,
+            ))
 
     # El respaldo se actualiza después del commit, fuera de la transacción.
     respaldo.actualizar_respaldo_si_posible(ruta_db=ruta_db)
@@ -152,18 +170,29 @@ CONSULTA_INVENTARIO = """
     SELECT
         iu.id,
         iu.codigoBarras,
-        COALESCE(c.referenciaProveedor, iu.referencia) AS referenciaProveedor,
-        c.referenciaRepuesto AS referenciaRepuesto,
-        COALESCE(c.descripcionEstandarizada, iu.descripcion) AS descripcion,
+        COALESCE(
+            NULLIF(TRIM(iu.referenciaProveedor), ''),
+            c.referenciaProveedor,
+            iu.referencia
+        ) AS referenciaProveedor,
+        COALESCE(
+            NULLIF(TRIM(iu.referenciaRepuesto), ''),
+            c.referenciaRepuesto
+        ) AS referenciaRepuesto,
+        COALESCE(
+            NULLIF(TRIM(iu.descripcionEstandarizada), ''),
+            c.descripcionEstandarizada,
+            iu.descripcion
+        ) AS descripcion,
         iu.referencia AS referenciaInventario,
-        c.equivalente,
-        c.marca AS marcaArticulo,
-        c.carro AS marcaVehiculo,
-        c.modelo,
-        c.lado,
-        c.medida,
+        COALESCE(NULLIF(TRIM(iu.equivalente), ''), c.equivalente) AS equivalente,
+        COALESCE(NULLIF(TRIM(iu.marcaArticulo), ''), c.marca) AS marcaArticulo,
+        COALESCE(NULLIF(TRIM(iu.marcaVehiculo), ''), c.carro) AS marcaVehiculo,
+        COALESCE(NULLIF(TRIM(iu.modelo), ''), c.modelo) AS modelo,
+        COALESCE(NULLIF(TRIM(iu.lado), ''), c.lado) AS lado,
+        COALESCE(NULLIF(TRIM(iu.medida), ''), c.medida) AS medida,
         iu.proveedor,
-        COALESCE(c.grupo, iu.grupo) AS grupo,
+        COALESCE(NULLIF(TRIM(iu.grupo), ''), c.grupo) AS grupo,
         iu.cantidad,
         iu.costo,
         iu.precioVenta,
@@ -224,21 +253,42 @@ def _where_inventario(filtros):
     mapa = {
         "codigo": "UPPER(TRIM(COALESCE(iu.codigoBarras, '')))",
         "descripcion": (
-            "UPPER(TRIM(COALESCE(c.descripcionEstandarizada, iu.descripcion, '')))"
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.descripcionEstandarizada), ''), "
+            "c.descripcionEstandarizada, iu.descripcion, '')))"
         ),
         "referencia_proveedor": (
-            "UPPER(TRIM(COALESCE(c.referenciaProveedor, iu.referencia, '')))"
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.referenciaProveedor), ''), "
+            "c.referenciaProveedor, iu.referencia, '')))"
         ),
         "referencia_repuesto": (
-            "UPPER(TRIM(COALESCE(c.referenciaRepuesto, '')))"
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.referenciaRepuesto), ''), "
+            "c.referenciaRepuesto, '')))"
         ),
-        "equivalente": "UPPER(TRIM(COALESCE(c.equivalente, '')))",
-        "marca_articulo": "UPPER(TRIM(COALESCE(c.marca, '')))",
-        "marca_vehiculo": "UPPER(TRIM(COALESCE(c.carro, '')))",
-        "modelo": "UPPER(TRIM(COALESCE(c.modelo, '')))",
-        "lado": "UPPER(TRIM(COALESCE(c.lado, '')))",
+        "equivalente": (
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.equivalente), ''), "
+            "c.equivalente, '')))"
+        ),
+        "marca_articulo": (
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.marcaArticulo), ''), "
+            "c.marca, '')))"
+        ),
+        "marca_vehiculo": (
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.marcaVehiculo), ''), "
+            "c.carro, '')))"
+        ),
+        "modelo": (
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.modelo), ''), "
+            "c.modelo, '')))"
+        ),
+        "lado": (
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.lado), ''), "
+            "c.lado, '')))"
+        ),
         "proveedor": "UPPER(TRIM(COALESCE(iu.proveedor, '')))",
-        "grupo": "UPPER(TRIM(COALESCE(c.grupo, iu.grupo, '')))",
+        "grupo": (
+            "UPPER(TRIM(COALESCE(NULLIF(TRIM(iu.grupo), ''), "
+            "c.grupo, '')))"
+        ),
         "ubicacion": "UPPER(TRIM(COALESCE(iu.ubicacion, '')))",
         "estante": "UPPER(TRIM(COALESCE(iu.estante, '')))",
     }
@@ -708,7 +758,7 @@ def imprimir_etiqueta_nueva():
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT ubicacion
+                SELECT name, ubicacion
                 FROM bartenderFiles
                 WHERE idBartenderFiles = ?
             """, (template_id,))
@@ -718,28 +768,38 @@ def imprimir_etiqueta_nueva():
         if not row:
             raise Exception("Template BarTender no encontrado")
 
-        ruta_template = row[0]
-
         productos = [(codigo, descripcion, precioCifrado, cantidad)]
 
-        imprimir_varios(
-            productos,
-            ruta_template=ruta_template,
-            columna_inicio=1
+        trabajo = impresion_servicio.crear_trabajo(
+            db.ruta_bd_activa(),
+            usuario=session.get('usuario'),
+            articulos=productos,
+            id_plantilla=template_id,
+            plantilla=row[0],
+            ruta_plantilla=row[1],
+            origen='inventario',
+            columna_inicio=columna_inicio,
+            clave_unica=data.get('clave_idempotencia'),
         )
 
-        cursor = None
-        with db.conexion() as conn:
-            conn.execute(
-                """
-                UPDATE inventarioUnico
-                SET estadoEtiquetado = 'IMPRESO',
-                    fechaActualizacion = ?
-                WHERE codigoBarras = ?
-                """,
-                (str(date.today()), codigo),
-            )
+        if trabajo.get('duplicado'):
+            return {
+                'ok': True,
+                'mensaje': (
+                    'La impresión ya estaba en la cola '
+                    f"(trabajo #{trabajo['idTrabajo']})"
+                ),
+                'idTrabajo': trabajo['idTrabajo'],
+                'duplicado': True,
+            }
 
-        return {'ok': True, 'mensaje': f'{cantidad} etiqueta(s) enviada(s) a impresión'}
+        return {
+            'ok': True,
+            'mensaje': (
+                f'{cantidad} etiqueta(s) encolada(s) para impresión en el '
+                f"servidor (trabajo #{trabajo['idTrabajo']})"
+            ),
+            'idTrabajo': trabajo['idTrabajo'],
+        }
     except Exception as e:
         return {'ok': False, 'error': str(e)}, 500

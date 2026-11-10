@@ -91,7 +91,12 @@ def ruta_bd_activa():
 
 
 def conectar(ruta=None):
-    """Crea una conexión SQLite con configuración razonable."""
+    """Crea una conexión SQLite lista para uso concurrente en LAN.
+
+    Cada solicitud abre su propia conexión. Se activa WAL para permitir
+    lectores concurrentes mientras hay un escritor, ``busy_timeout`` para
+    esperar bloqueos breves y claves foráneas para mantener integridad.
+    """
 
     if ruta is None:
         ruta = ruta_bd_activa()
@@ -101,8 +106,56 @@ def conectar(ruta=None):
 
     conn = sqlite3.connect(ruta, timeout=30)
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
+
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except sqlite3.DatabaseError:
+        # Bases en memoria o de solo lectura: se mantienen operativas.
+        pass
 
     return conn
+
+
+def es_error_de_bloqueo(error):
+    """Indica si el error corresponde a una base SQLite ocupada."""
+
+    texto = str(error).lower()
+    return "database is locked" in texto or "database table is locked" in texto
+
+
+def mensaje_de_bloqueo():
+    return (
+        "La base de datos está ocupada por otra operación. Espere unos "
+        "segundos y vuelva a intentarlo."
+    )
+
+
+def respaldar_base(destino, ruta=None):
+    """Copia consistente de la base activa usando la API de backup de SQLite.
+
+    No se debe copiar el archivo ``.sqlite`` activo con ``shutil`` porque
+    WAL puede contener transacciones aún no consolidadas.
+    """
+
+    ruta = ruta or ruta_bd_activa()
+    if not ruta:
+        raise RuntimeError("No hay una base de datos activa para respaldar.")
+
+    destino = os.path.abspath(destino)
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+
+    origen = sqlite3.connect(ruta, timeout=30)
+    copia = sqlite3.connect(destino)
+    try:
+        origen.backup(copia)
+        copia.commit()
+    finally:
+        copia.close()
+        origen.close()
+
+    return destino
 
 
 @contextmanager

@@ -315,8 +315,11 @@ def inventariar():
     template_id = datos.get("template_id")
     if resultado.get("etiquetas") and template_id:
         try:
-            _imprimir_etiquetas(resultado["etiquetas"], template_id)
-            resultado["impresion"] = "ok"
+            trabajo = _imprimir_etiquetas(
+                resultado["etiquetas"], template_id, session.get("usuario")
+            )
+            resultado["impresion"] = "encolada"
+            resultado["idTrabajoImpresion"] = trabajo.get("idTrabajo")
         except Exception as error:
             resultado["errores_impresion"] = len(resultado["etiquetas"])
             resultado["error_impresion"] = str(error)
@@ -351,21 +354,30 @@ def reimprimir():
         ), 400
 
     try:
-        _imprimir_etiquetas(etiquetas, template_id)
-        return jsonify({"ok": True, "impresas": len(etiquetas)})
+        trabajo = _imprimir_etiquetas(
+            etiquetas, template_id, session.get("usuario")
+        )
+        return jsonify(
+            {
+                "ok": True,
+                "impresas": len(etiquetas),
+                "impresion": "encolada",
+                "idTrabajoImpresion": trabajo.get("idTrabajo"),
+            }
+        )
     except Exception as error:
         return jsonify({"ok": False, "error": str(error)}), 500
 
 
-def _imprimir_etiquetas(etiquetas, template_id):
-    """Impresión desacoplada; se ejecuta después del commit del inventariado."""
+def _imprimir_etiquetas(etiquetas, template_id, usuario=None):
+    """Encola la impresión; el worker del servidor la procesa después."""
 
-    from inventario.routes import imprimir_varios
+    from impresion import servicio as impresion_servicio
 
     with db.conexion() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT ubicacion FROM bartenderFiles WHERE idBartenderFiles = ?",
+            "SELECT name, ubicacion FROM bartenderFiles WHERE idBartenderFiles = ?",
             (template_id,),
         )
         fila = cursor.fetchone()
@@ -383,4 +395,13 @@ def _imprimir_etiquetas(etiquetas, template_id):
         for etiqueta in etiquetas
     ]
 
-    imprimir_varios(productos, ruta_template=fila[0], columna_inicio=1)
+    return impresion_servicio.crear_trabajo(
+        db.ruta_bd_activa(),
+        usuario=usuario,
+        articulos=productos,
+        id_plantilla=template_id,
+        plantilla=fila[0],
+        ruta_plantilla=fila[1],
+        origen="consolidado",
+        columna_inicio=1,
+    )

@@ -1,23 +1,21 @@
 from flask import Flask, render_template, request, session, redirect, url_for, send_from_directory, flash
-import webbrowser
-import threading
 from auth import auth
 from ion.routes import ion_bp
 from facturas.routes import facturas_bp
 from inventario.routes import inventario_bp
 from grupos.routes import grupo_bp
 from consolidado.routes import consolidado_bp
+from impresion.routes import impresion_bp
 from inventario import respaldo
+import configuracion_servidor
 import db
 import migraciones
+import seguridad
 import os
 import pandas as pd
 
 app = Flask(__name__)
-app.secret_key = os.environ.get(
-    'TOYONISSAN_SECRET_KEY',
-    'clave-secreta-muy-segura'
-)
+app.secret_key = seguridad.cargar_secreto()
 
 app.register_blueprint(auth)
 app.register_blueprint(ion_bp)
@@ -25,6 +23,10 @@ app.register_blueprint(facturas_bp)
 app.register_blueprint(inventario_bp)
 app.register_blueprint(grupo_bp)
 app.register_blueprint(consolidado_bp)
+app.register_blueprint(impresion_bp)
+
+# Login obligatorio, guardia de LAN, CSRF, auditoría y filtros de seguridad.
+seguridad.configurar_seguridad(app)
 
 # Ruta absoluta del directorio 'bin/codigos'
 RUTA_CODIGOS = os.path.join(os.path.dirname(__file__), 'bin', 'codigos')
@@ -73,11 +75,42 @@ def normalizar_valor(valor):
     return valor
 
 
-def actualizar_consolidado(conn, df):
+def _estado_consolidado_desde_datos(datos, duplicado=False):
+    """Calcula el estado de Consolidado con las reglas del README."""
 
-    # ==========================================================
-    # CAMPOS QUE SE VAN A COMPARAR Y ACTUALIZAR
-    # ==========================================================
+    if duplicado:
+        return "BLOQUEADO"
+
+    descripcion = normalizar_valor(datos.get("descripcionEstandarizada"))
+    referencia = normalizar_valor(datos.get("referenciaProveedor"))
+    abrev = normalizar_valor(datos.get("abrevProveedor"))
+
+    referencia_valida = (
+        referencia is not None
+        and str(referencia).strip().upper()
+        not in ("", "SIN_REFERENCIA", "SIN REFERENCIA", "NONE")
+    )
+
+    if (
+        descripcion
+        and len(str(descripcion).strip()) >= 3
+        and referencia_valida
+        and abrev
+    ):
+        return "LISTO_INVENTARIAR"
+    return "PENDIENTE_REVISION"
+
+
+def actualizar_consolidado(conn, df):
+    """Inserta o actualiza Consolidado desde un DataFrame estandarizado.
+
+    Reglas:
+    * La llave es ``abrevProveedor + referenciaProveedor`` normalizada.
+    * Si hay más de una fila existente para la misma llave no se elige una
+      arbitrariamente: el registro se omite y se reporta como ambiguo.
+    * Un valor manual no vacío tiene prioridad. Los valores vacíos del
+      DataFrame nunca sobrescriben datos válidos ya guardados.
+    """
 
     campos = [
         "idProveedor",
@@ -96,44 +129,49 @@ def actualizar_consolidado(conn, df):
         "modelo",
         "otros",
         "medida",
-        "descripcionEstandarizada"
+        "descripcionEstandarizada",
+        "grupo",
     ]
 
-    # ==========================================================
-    # VALIDAR COLUMNAS NECESARIAS
-    # ==========================================================
+    columnas_llave = ["abrevProveedor", "referenciaProveedor"]
 
-    columnas_necesarias = [
-        "abrevProveedor",
-        "referenciaProveedor"
-    ] + campos
-
-    faltantes = [
+    faltantes_llave = [
         columna
-        for columna in columnas_necesarias
+        for columna in columnas_llave
         if columna not in df.columns
     ]
 
-    if faltantes:
-
+    if faltantes_llave:
         raise ValueError(
             "Faltan las siguientes columnas en el DataFrame: "
-            + ", ".join(faltantes)
+            + ", ".join(faltantes_llave)
         )
+
+    # Los campos operativos opcionales que no vengan en el archivo se tratan
+    # como vacíos: nunca deben romper la importación ni sobrescribir datos.
+    faltantes = [
+        columna
+        for columna in campos
+        if columna not in df.columns
+    ]
+    if faltantes:
+        df = df.copy()
+        for columna in faltantes:
+            df[columna] = None
 
     cursor = conn.cursor()
 
-    # ==========================================================
-    # LEER REGISTROS EXISTENTES DE SQLITE
-    # ==========================================================
+    columnas_bd = (
+        ["id"]
+        + ["referenciaProveedor", "abrevProveedor"]
+        + campos
+        + ["estadoConsolidado"]
+    )
 
-    columnas_bd = [
-        "referenciaProveedor",
-        "abrevProveedor"
-    ] + campos
-
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT
+            id,
             referenciaProveedor,
             abrevProveedor,
             idProveedor,
@@ -152,125 +190,70 @@ def actualizar_consolidado(conn, df):
             modelo,
             otros,
             medida,
-            descripcionEstandarizada
+            descripcionEstandarizada,
+            grupo,
+            estadoConsolidado
         FROM consolidado
-    """)
+        """
+    )
 
     registros_bd = cursor.fetchall()
 
-    # ==========================================================
-    # CREAR DICCIONARIO DE LOS REGISTROS EXISTENTES
-    #
-    # LLAVE:
-    #
-    #     abrevProveedor + referenciaProveedor
-    #
-    # ==========================================================
-
     bd = {}
+    ids_por_clave = {}
+    conteo_por_clave = {}
 
     for registro in registros_bd:
+        datos_bd = dict(zip(columnas_bd, registro))
 
-        datos_bd = dict(
-            zip(columnas_bd, registro)
-        )
-
-        referencia = normalizar_valor(
-            datos_bd["referenciaProveedor"]
-        )
-
-        abrev_proveedor = normalizar_valor(
-            datos_bd["abrevProveedor"]
-        )
+        referencia = normalizar_valor(datos_bd["referenciaProveedor"])
+        abrev_proveedor = normalizar_valor(datos_bd["abrevProveedor"])
 
         if referencia is None or abrev_proveedor is None:
             continue
 
         clave = (
             str(abrev_proveedor).strip().upper(),
-            str(referencia).strip().upper()
+            str(referencia).strip().upper(),
         )
 
-        bd[clave] = datos_bd
-
-    # ==========================================================
-    # CONTADORES
-    # ==========================================================
+        conteo_por_clave[clave] = conteo_por_clave.get(clave, 0) + 1
+        if clave not in bd:
+            bd[clave] = datos_bd
+            ids_por_clave[clave] = datos_bd["id"]
 
     nuevos = 0
     modificados = 0
     sin_cambios = 0
-
-    # ==========================================================
-    # RECORRER DATAFRAME
-    # ==========================================================
+    ambiguos = 0
 
     for _, fila in df.iterrows():
 
-        # ------------------------------------------------------
-        # OBTENER LLAVE
-        # ------------------------------------------------------
+        referencia = normalizar_valor(fila["referenciaProveedor"])
+        abrev_proveedor = normalizar_valor(fila["abrevProveedor"])
 
-        referencia = normalizar_valor(
-            fila["referenciaProveedor"]
-        )
-
-        abrev_proveedor = normalizar_valor(
-            fila["abrevProveedor"]
-        )
-
-        # No podemos procesar sin referencia
-        if referencia is None:
+        if referencia is None or abrev_proveedor is None:
             continue
 
-        # No podemos identificar el proveedor
-        if abrev_proveedor is None:
-            continue
-
-        referencia = str(
-            referencia
-        ).strip()
-
-        abrev_proveedor = str(
-            abrev_proveedor
-        ).strip()
+        referencia = str(referencia).strip()
+        abrev_proveedor = str(abrev_proveedor).strip()
 
         clave = (
             abrev_proveedor.upper(),
-            referencia.upper()
+            referencia.upper(),
         )
 
-        # ------------------------------------------------------
-        # PREPARAR DATOS
-        # ------------------------------------------------------
-
         datos = {}
-
         for campo in campos:
-
-            datos[campo] = normalizar_valor(
-                fila[campo]
-            )
-
-        # ======================================================
-        # REGISTRO NUEVO
-        # ======================================================
+            datos[campo] = normalizar_valor(fila[campo])
+        datos["abrevProveedor"] = abrev_proveedor
+        datos["referenciaProveedor"] = referencia
 
         if clave not in bd:
+            estado_nuevo = _estado_consolidado_desde_datos(datos, duplicado=False)
 
-            desc_estado = normalizar_valor(
-                datos.get("descripcionEstandarizada")
-            )
-            estado_nuevo = (
-                "LISTO_INVENTARIAR"
-                if desc_estado
-                and len(str(desc_estado).strip()) >= 3
-                and referencia
-                and referencia.upper() != "SIN_REFERENCIA"
-                else "PENDIENTE_REVISION"
-            )
-
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO consolidado (
                     referenciaProveedor,
                     abrevProveedor,
@@ -291,174 +274,144 @@ def actualizar_consolidado(conn, df):
                     otros,
                     medida,
                     descripcionEstandarizada,
-                    estadoConsolidado
+                    grupo,
+                    estadoConsolidado,
+                    fechaCreacion,
+                    fechaActualizacion
                 )
                 VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 )
-            """, (
-                referencia,
-                abrev_proveedor,
-                datos["idProveedor"],
-                datos["referenciaRepuesto"],
-                datos["equivalente"],
-                datos["descripcion"],
-                datos["marca"],
-                datos["carro"],
-                datos["tipo"],
-                datos["tipoMotor"],
-                datos["precioListado"],
-                datos["proveedor"],
-                datos["lado"],
-                datos["ladoAbreviado"],
-                datos["repuesto"],
-                datos["modelo"],
-                datos["otros"],
-                datos["medida"],
-                datos["descripcionEstandarizada"],
-                estado_nuevo
-            ))
+                """,
+                (
+                    referencia,
+                    abrev_proveedor,
+                    datos["idProveedor"],
+                    datos["referenciaRepuesto"],
+                    datos["equivalente"],
+                    datos["descripcion"],
+                    datos["marca"],
+                    datos["carro"],
+                    datos["tipo"],
+                    datos["tipoMotor"],
+                    datos["precioListado"],
+                    datos["proveedor"],
+                    datos["lado"],
+                    datos["ladoAbreviado"],
+                    datos["repuesto"],
+                    datos["modelo"],
+                    datos["otros"],
+                    datos["medida"],
+                    datos["descripcionEstandarizada"],
+                    datos["grupo"],
+                    estado_nuevo,
+                ),
+            )
 
+            nuevo_id = cursor.lastrowid
+            ids_por_clave[clave] = nuevo_id
+            conteo_por_clave[clave] = 1
+            bd[clave] = {"id": nuevo_id, **datos}
             nuevos += 1
-
-            # --------------------------------------------------
-            # Agregar inmediatamente al diccionario
-            #
-            # Esto evita intentar insertar nuevamente
-            # si la misma llave aparece otra vez.
-            # --------------------------------------------------
-
-            bd[clave] = {
-                "referenciaProveedor": referencia,
-                "abrevProveedor": abrev_proveedor,
-                **datos
-            }
-
             continue
 
-        # ======================================================
-        # REGISTRO EXISTENTE
-        # ======================================================
+        # Coincidencia múltiple: no actualizar ni elegir la primera.
+        if conteo_por_clave.get(clave, 1) > 1:
+            ambiguos += 1
+            try:
+                cursor.execute(
+                    """
+                    UPDATE consolidado
+                    SET estadoConsolidado = 'BLOQUEADO'
+                    WHERE UPPER(TRIM(abrevProveedor)) = ?
+                      AND UPPER(TRIM(referenciaProveedor)) = ?
+                      AND COALESCE(estadoConsolidado, '') <> 'INVENTARIADO'
+                    """,
+                    clave,
+                )
+            except Exception:
+                pass
+            continue
 
         registro_bd = bd[clave]
-
-        cambio = False
-
-        # ------------------------------------------------------
-        # COMPARAR CAMPOS
-        # ------------------------------------------------------
+        cambios = {}
 
         for campo in campos:
+            valor_nuevo = datos.get(campo)
+            if valor_nuevo is None:
+                continue
+            if isinstance(valor_nuevo, str) and not valor_nuevo.strip():
+                continue
 
-            valor_excel = normalizar_valor(
-                datos.get(campo)
+            valor_bd = normalizar_valor(registro_bd.get(campo))
+
+            comparar_nuevo = (
+                valor_nuevo.strip() if isinstance(valor_nuevo, str) else valor_nuevo
+            )
+            comparar_bd = (
+                valor_bd.strip() if isinstance(valor_bd, str) else valor_bd
             )
 
-            valor_bd = normalizar_valor(
-                registro_bd.get(campo)
-            )
+            # Un 0 o vacío nunca reemplaza un precio existente.
+            if campo == "precioListado" and not comparar_nuevo:
+                continue
 
-            # Comparar como texto cuando sean strings
-            if isinstance(valor_excel, str):
-                valor_excel = valor_excel.strip()
+            if comparar_nuevo != comparar_bd:
+                cambios[campo] = valor_nuevo
 
-            if isinstance(valor_bd, str):
-                valor_bd = valor_bd.strip()
+        estado_actual = registro_bd.get("estadoConsolidado")
+        datos_estado = dict(registro_bd)
+        datos_estado.update(cambios)
 
-            if valor_excel != valor_bd:
-
-                cambio = True
-                break
-
-        # ======================================================
-        # REGISTRO MODIFICADO
-        # ======================================================
-
-        if cambio:
-
-            cursor.execute("""
-                UPDATE consolidado
-                SET
-                    idProveedor = ?,
-                    referenciaRepuesto = ?,
-                    equivalente = ?,
-                    descripcion = ?,
-                    marca = ?,
-                    carro = ?,
-                    tipo = ?,
-                    tipoMotor = ?,
-                    precioListado = ?,
-                    proveedor = ?,
-                    lado = ?,
-                    ladoAbreviado = ?,
-                    repuesto = ?,
-                    modelo = ?,
-                    otros = ?,
-                    medida = ?,
-                    descripcionEstandarizada = ?,
-                    fechaActualizacion =
-                        CURRENT_TIMESTAMP
-                WHERE
-                    abrevProveedor = ?
-                    AND referenciaProveedor = ?
-            """, (
-                datos["idProveedor"],
-                datos["referenciaRepuesto"],
-                datos["equivalente"],
-                datos["descripcion"],
-                datos["marca"],
-                datos["carro"],
-                datos["tipo"],
-                datos["tipoMotor"],
-                datos["precioListado"],
-                datos["proveedor"],
-                datos["lado"],
-                datos["ladoAbreviado"],
-                datos["repuesto"],
-                datos["modelo"],
-                datos["otros"],
-                datos["medida"],
-                datos["descripcionEstandarizada"],
-                abrev_proveedor,
-                referencia
-            ))
-
-            modificados += 1
-
-            # Actualizar también la copia en memoria
-            bd[clave] = {
-                "referenciaProveedor": referencia,
-                "abrevProveedor": abrev_proveedor,
-                **datos
-            }
-
-        # ======================================================
-        # REGISTRO SIN CAMBIOS
-        # ======================================================
-
+        if estado_actual == "INVENTARIADO":
+            estado_nuevo = "INVENTARIADO"
         else:
+            estado_nuevo = _estado_consolidado_desde_datos(
+                datos_estado, duplicado=False
+            )
 
+        if cambios:
+            asignaciones = ", ".join(f"{campo} = ?" for campo in cambios)
+            cursor.execute(
+                f"""
+                UPDATE consolidado
+                SET {asignaciones},
+                    fechaActualizacion = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                tuple(cambios.values()) + (registro_bd["id"],),
+            )
+
+        if estado_nuevo != estado_actual:
+            cursor.execute(
+                "UPDATE consolidado SET estadoConsolidado = ? WHERE id = ?",
+                (estado_nuevo, registro_bd["id"]),
+            )
+
+        if cambios or estado_nuevo != estado_actual:
+            modificados += 1
+        else:
             sin_cambios += 1
 
-    # ==========================================================
-    # GUARDAR CAMBIOS
-    # ==========================================================
+        registro_bd.update(cambios)
+        registro_bd["estadoConsolidado"] = estado_nuevo
+        ids_por_clave[clave] = registro_bd["id"]
 
     conn.commit()
 
     respaldo.actualizar_respaldo_si_posible(conn=conn)
 
-    # ==========================================================
-    # RESULTADO
-    # ==========================================================
-
     return {
         "nuevos": nuevos,
         "modificados": modificados,
         "sin_cambios": sin_cambios,
-        "total": nuevos + modificados + sin_cambios
+        "ambiguos": ambiguos,
+        "total": nuevos + modificados + sin_cambios + ambiguos,
+        "ids_por_clave": ids_por_clave,
     }
+
 
 @app.route('/bin/codigos/<path:filename>')
 def servir_codigos(filename):
@@ -484,15 +437,21 @@ def configuracion():
     nombre_db = ''
     email_revision = ''
     token_contraseña = ''
+    token_configurado = False
     correos_varios = ''
     sql_result = None
     sql_error = None
+    servidor_config = configuracion_servidor.cargar_configuracion()
+    ip_local = configuracion_servidor.detectar_ip_local()
+    url_clientes = configuracion_servidor.url_clientes(servidor_config, ip_local)
+    servidor_estado = configuracion_servidor.estado_servidor()
 
     bases_disponibles = db.listar_bases()
     ruta_db = db.ruta_bd_activa()
     nombre_bd_activa = db.obtener_bd_activa()
 
     # Leer la última configuración si existe
+    token_guardado = ''
     if ruta_db:
         try:
             conn = db.conectar(ruta_db)
@@ -503,7 +462,8 @@ def configuracion():
             """)
             row = cursor.fetchone()
             if row:
-                nombre_db, email_revision, token_contraseña, correos_varios = row
+                nombre_db, email_revision, token_guardado, correos_varios = row
+                token_configurado = bool(token_guardado)
             conn.close()
         except Exception as e:
             mensaje = f"Error al leer la configuración: {e}"
@@ -558,10 +518,45 @@ def configuracion():
             else:
                 mensaje = "Seleccione una base de datos válida."
 
+        elif accion == 'guardar_servidor':
+            servidor_config, errores = configuracion_servidor.guardar_configuracion(
+                {
+                    'nombre_servidor': request.form.get('nombre_servidor'),
+                    'host': request.form.get('host'),
+                    'puerto': request.form.get('puerto'),
+                    'hilos': request.form.get('hilos'),
+                }
+            )
+            if errores:
+                mensaje = " ".join(errores)
+                flash(mensaje, "danger")
+            else:
+                mensaje = (
+                    "Configuración del servidor guardada. "
+                    "Los cambios de host o puerto se aplican al reiniciar "
+                    "el servicio."
+                )
+                flash(mensaje, "success")
+            ip_local = configuracion_servidor.detectar_ip_local()
+            url_clientes = configuracion_servidor.url_clientes(
+                servidor_config, ip_local
+            )
+            servidor_estado = configuracion_servidor.estado_servidor()
+
+        elif accion == 'probar_acceso_local':
+            servidor_config = configuracion_servidor.cargar_configuracion()
+            prueba = configuracion_servidor.probar_acceso_local(servidor_config)
+            mensaje = prueba['mensaje']
+            flash(mensaje, "success" if prueba['ok'] else "warning")
+            servidor_estado = configuracion_servidor.estado_servidor()
+
         elif accion == 'guardar_config':
             email_revision = request.form.get('email_revision')
-            token_contraseña = request.form.get('token_contraseña')
+            token_form = (request.form.get('token_contraseña') or '').strip()
             correos_varios = request.form.get('correos_varios')
+            if token_form:
+                token_guardado = seguridad.cifrar_token(token_form)
+            token_contraseña = ''
             if ruta_db:
                 try:
                     conn = db.conectar(ruta_db)
@@ -572,11 +567,12 @@ def configuracion():
                     """, (
                         os.path.splitext(os.path.basename(ruta_db))[0],
                         email_revision,
-                        token_contraseña,
+                        token_guardado,
                         correos_varios
                     ))
                     conn.commit()
                     conn.close()
+                    token_configurado = bool(token_guardado)
                     mensaje = "Configuración guardada correctamente."
                 except Exception as e:
                     mensaje = f"Error al guardar la configuración: {e}"
@@ -779,6 +775,7 @@ def configuracion():
         nombre_db=nombre_db,
         email_revision=email_revision,
         token_contraseña=token_contraseña,
+        token_configurado=token_configurado,
         correos_varios=correos_varios,
         sql_result=sql_result,
         sql_error=sql_error,
@@ -786,7 +783,11 @@ def configuracion():
         ubicaciones=ubicaciones,
         proveedores=proveedores,
         bases_disponibles=bases_disponibles,
-        nombre_bd_activa=nombre_bd_activa
+        nombre_bd_activa=nombre_bd_activa,
+        servidor_config=servidor_config,
+        servidor_estado=servidor_estado,
+        ip_local=ip_local,
+        url_clientes=url_clientes,
     )
 
 @app.route("/configuracion/procesar-pendientes", methods=["GET", "POST"])
@@ -1127,11 +1128,9 @@ def inicializar_bd():
         conn.close()
 
 
-def abrir_navegador():
-    webbrowser.open_new("http://localhost:5000")
-
-
 if __name__ == '__main__':
-    inicializar_bd()
-    threading.Timer(1.25, abrir_navegador).start()
-    app.run(debug=os.environ.get('TOYONISSAN_DEBUG', '1') == '1')
+    # Operación diaria con Waitress (nunca el servidor de desarrollo Flask).
+    # ``python app.py`` delega en run_server.py.
+    import run_server
+
+    raise SystemExit(run_server.main(app))

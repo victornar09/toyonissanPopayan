@@ -205,33 +205,48 @@ Ver `database/estructura.sql`. Tablas principales:
 ## Configuración y ejecución
 
 ### Requisitos
-- Python 3.x
+- Python 3.10 o superior
 - En Windows: `pywin32` para BarTender COM
 - Dependencias en `requirements.txt` / `requirementsWindows.txt`
+- `waitress` para la operación diaria en red local
 
 ### Variables de entorno
-- `TOYONISSAN_SECRET_KEY` (default: clave-secreta-muy-segura)
-- `TOYONISSAN_DEBUG` ('1' por defecto)
+- `TOYONISSAN_SECRET_KEY`: clave secreta de sesión. Si no se define, se usa
+  una clave aleatoria persistida en `config/.secret_key`.
+- `TOYONISSAN_BACKUP_HORA`: hora del respaldo diario (por defecto `2`).
+- `TOYONISSAN_BARTENDER_SIMULADO=1`: solo pruebas, no llama a BarTender.
+- `TOYONISSAN_PERMITIR_RED_PUBLICA=1`: excepción de laboratorio; no usar.
 
-### Puesta en marcha
+### Puesta en marcha (servidor local)
+
 ```bash
 # Instalar dependencias
 pip install -r requirements.txt  # o requirementsWindows.txt en Windows
 
-# Ejecutar
-python app.py
+# Ejecutar con Waitress (recomendado)
+python run_server.py
 ```
-Al arrancar:
-1. Llama `inicializar_bd()` que ejecuta `migraciones.migrar()` sobre la BD activa
-2. Abre navegador a `http://localhost:5000` tras 1.25s
-3. Flask corre en modo debug según variable
+
+También `python app.py` delega en `run_server.py`; ya no se usa el servidor de
+desarrollo de Flask ni se abre el navegador automáticamente.
+
+La configuración de host, puerto, nombre e hilos se administra en
+**Configuración → Servidor y red local** y se guarda en `config/servidor.json`.
+Los cambios de host o puerto requieren reiniciar el servicio.
+
+Consulte la guía completa en
+[`docs/DESPLIEGUE_WINDOWS.md`](docs/DESPLIEGUE_WINDOWS.md): IP fija/DHCP,
+Firewall, servicio de Windows, cola BarTender, respaldos, recuperación,
+limitaciones de SQLite y migración futura a PostgreSQL.
 
 ### Primer uso
 1. Acceder a `/configuracion`
 2. Crear base de datos (ej. `toyonissan`) → crea desde `estructura.sql` + migraciones
-3. Configurar email/token de Gmail (usar contraseña de aplicación para IMAP)
+3. Configurar email/token de Gmail (usar contraseña de aplicación para IMAP).
+   El token se guarda cifrado y no se vuelve a mostrar.
 4. Revisar proveedores pre-cargados
 5. Colocar archivos necesarios: `bin/xlsx/CONSOLIDADO.xlsx`, `bin/xlsx/estandarizacion.xlsx`, plantillas `.btw` en `bartenderFiles/`
+6. Ajustar “Servidor y red local” y probar el acceso desde otro PC
 
 ## Guía para orientarte en el código
 

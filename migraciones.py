@@ -142,6 +142,31 @@ def _migrar_inventario_facturas(conn):
         except Exception:
             pass
 
+    # Auditoría de referencias: se conserva la referencia original de la
+    # factura aunque el usuario corrija la referencia antes de consolidar.
+    if "referenciaOriginal" not in columnas:
+        try:
+            conn.execute(
+                "ALTER TABLE inventarioFacturas ADD COLUMN referenciaOriginal TEXT"
+            )
+        except Exception:
+            pass
+
+    if "referenciaCorregida" not in columnas:
+        try:
+            conn.execute(
+                "ALTER TABLE inventarioFacturas ADD COLUMN referenciaCorregida TEXT"
+            )
+        except Exception:
+            pass
+
+    conn.execute("""
+        UPDATE inventarioFacturas
+        SET referenciaOriginal = referencia
+        WHERE referenciaOriginal IS NULL
+          AND referencia IS NOT NULL
+    """)
+
     if not _indice_existe(conn, "idx_invf_idconsolidado"):
         try:
             conn.execute("CREATE INDEX idx_invf_idconsolidado ON inventarioFacturas (id_consolidado)")
@@ -358,6 +383,78 @@ def _migrar_inventario_estados(conn):
         SET fechaCreacion = COALESCE(fechaCreacion, fechaActualizacion)
         WHERE fechaCreacion IS NULL
     """)
+
+
+def _migrar_inventario_operativo(conn):
+    """Completa en inventarioUnico los datos operativos del catálogo.
+
+    Antes estos datos sólo se leían desde consolidado mediante un JOIN. Ahora
+    se persisten en el artículo de inventario para que la identidad operativa
+    no dependa de que exista una única fila de consolidado. Las columnas son
+    aditivas e idempotentes y el backfill sólo rellena valores vacíos.
+    """
+
+    if not _tabla_existe(conn, "inventarioUnico"):
+        return
+
+    _agregar_columna(conn, "inventarioUnico", "descripcionEstandarizada", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "referenciaProveedor", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "referenciaRepuesto", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "equivalente", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "marcaArticulo", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "marcaVehiculo", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "modelo", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "lado", "TEXT")
+    _agregar_columna(conn, "inventarioUnico", "medida", "TEXT")
+
+    if not _tabla_existe(conn, "consolidado"):
+        return
+
+    # Backfill: sólo se completan campos vacíos desde el consolidado
+    # relacionado. Nunca se sobrescribe un valor válido existente.
+    campos = [
+        ("descripcionEstandarizada", "descripcionEstandarizada"),
+        ("referenciaProveedor", "referenciaProveedor"),
+        ("referenciaRepuesto", "referenciaRepuesto"),
+        ("equivalente", "equivalente"),
+        ("marcaArticulo", "marca"),
+        ("marcaVehiculo", "carro"),
+        ("modelo", "modelo"),
+        ("lado", "lado"),
+        ("medida", "medida"),
+    ]
+
+    for columna_inventario, columna_consolidado in campos:
+        conn.execute(
+            f"""
+            UPDATE inventarioUnico AS iu
+            SET {columna_inventario} = (
+                SELECT c.{columna_consolidado}
+                FROM consolidado c
+                WHERE c.idInventarioUnico = iu.id
+                  AND c.{columna_consolidado} IS NOT NULL
+                  AND TRIM(c.{columna_consolidado}) <> ''
+                ORDER BY c.id
+                LIMIT 1
+            )
+            WHERE (iu.{columna_inventario} IS NULL
+                   OR TRIM(iu.{columna_inventario}) = '')
+              AND EXISTS (
+                  SELECT 1 FROM consolidado c
+                  WHERE c.idInventarioUnico = iu.id
+                    AND c.{columna_consolidado} IS NOT NULL
+                    AND TRIM(c.{columna_consolidado}) <> ''
+              )
+            """
+        )
+
+    try:
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_inventario_referencia_proveedor
+            ON inventarioUnico (referenciaProveedor)
+        """)
+    except sqlite3.OperationalError:
+        pass
 
 
 def _migrar_conteo_fisico(conn):
@@ -672,6 +769,72 @@ def _migrar_ion(conn):
             pass
 
 
+def _migrar_impresion_auditoria(conn):
+    """Crea las tablas de cola de impresión y auditoría."""
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trabajoImpresion (
+            idTrabajo INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            fechaInicio DATETIME,
+            fechaFin DATETIME,
+            articulos TEXT NOT NULL,
+            cantidades TEXT,
+            idPlantilla INTEGER,
+            plantilla TEXT,
+            rutaPlantilla TEXT,
+            archivoTemporal TEXT,
+            columnaInicio INTEGER NOT NULL DEFAULT 1,
+            origen TEXT,
+            estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+            mensajeError TEXT,
+            intentos INTEGER NOT NULL DEFAULT 0,
+            claveUnica TEXT
+        )
+        """
+    )
+
+    if not _indice_existe(conn, "idx_trabajo_impresion_estado"):
+        conn.execute(
+            """
+            CREATE INDEX idx_trabajo_impresion_estado
+            ON trabajoImpresion (estado, fecha)
+            """
+        )
+
+    if not _indice_existe(conn, "idx_trabajo_impresion_clave"):
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX idx_trabajo_impresion_clave
+            ON trabajoImpresion (claveUnica)
+            """
+        )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auditoria (
+            idAuditoria INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            usuario TEXT,
+            ip TEXT,
+            equipo TEXT,
+            metodo TEXT,
+            ruta TEXT,
+            accion TEXT,
+            detalle TEXT,
+            estadoHttp INTEGER
+        )
+        """
+    )
+
+    if not _indice_existe(conn, "idx_auditoria_fecha"):
+        conn.execute(
+            "CREATE INDEX idx_auditoria_fecha ON auditoria (fecha)"
+        )
+
+
 def migrar(conn):
     """Aplica todas las migraciones pendientes. Idempotente."""
 
@@ -679,8 +842,10 @@ def migrar(conn):
     _migrar_inventario_facturas(conn)
     _migrar_consolidado(conn)
     _migrar_inventario_estados(conn)
+    _migrar_inventario_operativo(conn)
     _migrar_conteo_fisico(conn)
     _migrar_ion(conn)
+    _migrar_impresion_auditoria(conn)
     conn.commit()
 
 

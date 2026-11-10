@@ -6,8 +6,6 @@ import email
 import zipfile
 from email.utils import parseaddr
 import xml.etree.ElementTree as ET
-import csv
-import win32com.client
 import pandas as pd
 
 import db
@@ -21,53 +19,8 @@ from facturas.xml_utils import (
 from procesamiento.consolidado import procesar_dataframe_pendientes
 from consolidado.servicio_inventario import obtener_o_crear_articulo
 from inventario import respaldo
-
-
-
-def imprimir_varios(productos, ruta_template, columna_inicio=1):
-    # CSV temporal (BarTender lo lee)
-    ruta_csv = os.path.abspath("productos_temp.csv")
-
-    with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        # Detectar si viene con proveedor
-        if productos and len(productos[0]) == 5:
-            writer.writerow(["codigo", "descripcion", "precio", "copias", "proveedor", "inicio_columna"])
-            for codigo, descripcion, precio, cantidad, proveedor in productos:
-                writer.writerow([
-                    codigo,
-                    descripcion,
-                    precio,
-                    cantidad,
-                    proveedor,
-                    columna_inicio
-                ])
-        else:
-            writer.writerow(["codigo", "descripcion", "precio", "copias", "inicio_columna"])
-            for codigo, descripcion, precio, cantidad in productos:
-                writer.writerow([
-                    codigo,
-                    descripcion,
-                    precio,
-                    cantidad,
-                    columna_inicio
-                ])
-
-    bt = win32com.client.Dispatch("BarTender.Application")
-    bt.Visible = True
-
-
-    formato = bt.Formats.Open(
-        os.path.abspath(ruta_template),
-        False,
-        ""
-    )
-
-    formato.PrintOut(False, False)
-
-    # Si luego quieres cerrar:
-    # formato.Close(0)
-    # bt.Quit(1)
+from impresion import servicio as impresion_servicio
+import seguridad
 
 
 facturas_bp = Blueprint('facturas', __name__, url_prefix='/facturas')
@@ -552,6 +505,8 @@ def facturas():
                                 )
 
                     os.remove(zip_path)
+                    # Liberar la escritura antes de la siguiente descarga IMAP.
+                    conn.commit()
 
         conn.commit()
         conn.close()
@@ -651,6 +606,7 @@ def ver_factura(id_factura):
                     lados = request.form.getlist("lado[]")
                     modelos = request.form.getlist("modelo[]")
                     medidas = request.form.getlist("medida[]")
+                    grupos = request.form.getlist("grupo[]")
                     precioListado = request.form.getlist("precioListado[]")
                     ids_inv_factura = request.form.getlist("idInventarioFactura[]")
 
@@ -661,68 +617,178 @@ def ver_factura(id_factura):
                         except Exception:
                             pass
 
-                    creados = 0
                     omitidos = 0
                     errores = 0
+                    ambiguos = 0
                     articulos_df = []
+                    lineas_por_clave = []
+
+                    def _valor(lista, indice):
+                        return (lista[indice] if indice < len(lista) else '') or ''
+
                     for i in range(len(referencias_proveedor)):
                         if i not in seleccionados_set:
                             continue
-                        ref_p = (referencias_proveedor[i] or '').strip()
+                        ref_p = _valor(referencias_proveedor, i).strip()
                         if not ref_p:
                             errores += 1
                             continue
-                        # Validar backend: línea pertenece a factura actual
+
+                        # Validar backend: la línea pertenece a la factura actual.
                         inv_line_id = None
-                        if i < len(ids_inv_factura):
-                            try:
-                                inv_line_id = int(ids_inv_factura[i])
-                            except Exception:
-                                inv_line_id = None
-                        if inv_line_id is not None:
-                            cursor.execute("SELECT id FROM inventarioFacturas WHERE id = ? AND id_factura = ?", (inv_line_id, id_factura))
-                            if not cursor.fetchone():
-                                errores += 1
-                                continue
-                        # Validar backend: no duplicar en consolidado
-                        if factura[5]:
-                            try:
-                                cursor.execute("SELECT 1 FROM consolidado WHERE UPPER(TRIM(abrevProveedor)) = ? AND UPPER(TRIM(referenciaProveedor)) = ?", (str(factura[5]).upper().strip(), ref_p.upper()))
-                                if cursor.fetchone():
-                                    omitidos += 1
-                                    continue
-                            except Exception:
-                                pass
-                        desc = (descripciones[i] if i < len(descripciones) else '') or ''
+                        try:
+                            inv_line_id = int(ids_inv_factura[i])
+                        except Exception:
+                            inv_line_id = None
+                        if inv_line_id is None:
+                            errores += 1
+                            continue
+                        cursor.execute(
+                            "SELECT referencia, descripcion_item "
+                            "FROM inventarioFacturas "
+                            "WHERE id = ? AND id_factura = ?",
+                            (inv_line_id, id_factura),
+                        )
+                        fila_linea = cursor.fetchone()
+                        if not fila_linea:
+                            errores += 1
+                            continue
+                        referencia_original = (fila_linea[0] or '').strip()
+                        descripcion_original = (fila_linea[1] or '').strip()
+
+                        desc = _valor(descripciones, i)
                         if not desc.strip():
                             errores += 1
                             continue
+
+                        # La llave es proveedor (siglas) + referencia. Si existen
+                        # varias filas no se elige la primera: se bloquea.
+                        clave = None
+                        if factura[5]:
+                            siglas = str(factura[5]).strip().upper()
+                            clamp_ref = ref_p.upper()
+                            cursor.execute(
+                                "SELECT COUNT(*) FROM consolidado "
+                                "WHERE UPPER(TRIM(abrevProveedor)) = ? "
+                                "AND UPPER(TRIM(referenciaProveedor)) = ?",
+                                (siglas, clamp_ref),
+                            )
+                            if (cursor.fetchone() or [0])[0] > 1:
+                                ambiguos += 1
+                                cursor.execute(
+                                    "UPDATE consolidado SET estadoConsolidado = 'BLOQUEADO' "
+                                    "WHERE UPPER(TRIM(abrevProveedor)) = ? "
+                                    "AND UPPER(TRIM(referenciaProveedor)) = ? "
+                                    "AND COALESCE(estadoConsolidado, '') <> 'INVENTARIADO'",
+                                    (siglas, clamp_ref),
+                                )
+                                continue
+                            clave = (siglas, clamp_ref)
+
                         articulos_df.append({
                             "referenciaProveedor": ref_p,
-                            "referenciaRepuesto": (referencias_repuesto[i] if i < len(referencias_repuesto) else '') or '',
-                            "equivalente": (equivalentes[i] if i < len(equivalentes) else '') or '',
+                            "referenciaRepuesto": _valor(referencias_repuesto, i),
+                            "equivalente": _valor(equivalentes, i),
                             "descripcion": desc.strip(),
-                            "marca": (marcas[i] if i < len(marcas) else '') or '',
-                            "carro": (carros[i] if i < len(carros) else '') or '',
+                            "marca": _valor(marcas, i),
+                            "carro": _valor(carros, i),
                             "tipo": "",
                             "tipoMotor": "",
-                            "precioListado": (precioListado[i] if i < len(precioListado) else '') or '',
+                            "lado": _valor(lados, i),
+                            "modelo": _valor(modelos, i),
+                            "medida": _valor(medidas, i),
+                            "grupo": _valor(grupos, i),
+                            "precioListado": _valor(precioListado, i),
                             "proveedor": factura[2],
                             "idProveedor": factura[1],
-                            "abrevProveedor": factura[5]
+                            "abrevProveedor": factura[5],
                         })
+                        lineas_por_clave.append({
+                            "id": inv_line_id,
+                            "clave": clave,
+                            "referenciaOriginal": referencia_original,
+                            "referenciaCorregida": ref_p,
+                            "descripcion": desc.strip(),
+                            "descripcionManual": (
+                                desc.strip() != descripcion_original
+                            ),
+                        })
+
                     if not articulos_df:
-                        flash(f"Procesados: creados {creados}, omitidos {omitidos}, errores {errores}", "warning")
+                        flash(
+                            f"Procesados: omitidos {omitidos}, ambiguos {ambiguos}, "
+                            f"errores {errores}. No se creó ningún artículo.",
+                            "warning",
+                        )
                         return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
+
                     df = pd.DataFrame(articulos_df)
-                    df = procesar_dataframe_pendientes(df, ruta_estandarizacion)
+                    # Los valores enviados por el formulario son ediciones del
+                    # usuario: tienen prioridad sobre el cálculo automático.
+                    campos_manuales = {
+                        campo
+                        for campo in (
+                            "carro", "referenciaRepuesto", "equivalente",
+                            "marca", "modelo", "lado", "medida", "grupo",
+                        )
+                        if any(
+                            str(articulo.get(campo) or '').strip()
+                            for articulo in articulos_df
+                        )
+                    }
+                    # La descripción sólo es manual si el usuario la cambió;
+                    # de lo contrario se aplican los ajustes de estandarización.
+                    if any(
+                        linea.get("descripcionManual")
+                        for linea in lineas_por_clave
+                    ):
+                        campos_manuales.add("descripcion")
+                    df = procesar_dataframe_pendientes(
+                        df, ruta_estandarizacion, campos_manuales=campos_manuales
+                    )
                     from app import actualizar_consolidado
                     resultado = actualizar_consolidado(conn, df)
+
+                    # Vincular cada línea de factura con su registro de
+                    # consolidado y conservar la referencia original.
+                    ids_por_clave = resultado.get("ids_por_clave") or {}
+                    for linea in lineas_por_clave:
+                        id_consolidado = None
+                        if linea["clave"] is not None:
+                            id_consolidado = ids_por_clave.get(linea["clave"])
+                        corregida = linea["referenciaCorregida"]
+                        original = linea["referenciaOriginal"] or corregida
+                        cursor.execute(
+                            """
+                            UPDATE inventarioFacturas
+                            SET referenciaOriginal = COALESCE(referenciaOriginal, ?),
+                                referenciaCorregida = CASE
+                                    WHEN UPPER(TRIM(?)) <> UPPER(TRIM(?)) THEN ?
+                                    ELSE referenciaCorregida END,
+                                referencia = ?,
+                                id_consolidado = COALESCE(?, id_consolidado)
+                            WHERE id = ? AND id_factura = ?
+                            """,
+                            (
+                                original,
+                                corregida,
+                                original,
+                                corregida,
+                                corregida,
+                                id_consolidado,
+                                linea["id"],
+                                id_factura,
+                            ),
+                        )
+                    conn.commit()
+
                     creados_res = resultado.get('nuevos', 0)
                     mod_res = resultado.get('modificados', 0)
+                    amb_res = resultado.get('ambiguos', 0)
                     flash(
-                        f"Procesados: creados {creados_res}, modificados {mod_res}, omitidos {omitidos}, errores {errores}",
-                        "success"
+                        f"Procesados: creados {creados_res}, modificados {mod_res}, "
+                        f"omitidos {omitidos + amb_res}, ambiguos {ambiguos}, errores {errores}",
+                        "success" if creados_res or mod_res else "warning",
                     )
                     return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
             except Exception as e:
@@ -742,6 +808,7 @@ def ver_factura(id_factura):
 
         items_para_imprimir = []
         ruta_template = None
+        plantilla_nombre = None
         procesados = 0
         omitidos = 0
         bloqueados = 0
@@ -764,7 +831,9 @@ def ver_factura(id_factura):
                         a.inventariado,
                         a.id_inventarioUnico,
                         b.proveedor,
-                        b.fecha
+                        b.fecha,
+                        a.referenciaOriginal,
+                        a.referenciaCorregida
                     FROM inventarioFacturas a
                     LEFT JOIN facturas b ON a.id_factura = b.id_factura
                     WHERE a.id IN ({placeholders})
@@ -786,18 +855,61 @@ def ver_factura(id_factura):
 
                     (
                         id_fila, referencia, descripcion_orig, cantidad,
-                        valor_unitario, inventariado, id_inventario_unico_bd, proveedor, fecha
+                        valor_unitario, inventariado, id_inventario_unico_bd, proveedor,
+                        fecha, referencia_original_bd, referencia_corregida_bd
                     ) = fila
 
-                    # Revalidar estado real en backend
-                    estado = obtener_estado_linea(conn, (proveedor, fecha, None, None, None), fila)
+                    # Valor manual del formulario. Si el usuario corrigió la
+                    # referencia, se valida contra esa referencia corregida.
+                    referencia_form = (
+                        request.form.get(f'referencia_{id_fact_item}', '') or ''
+                    ).strip()
+                    descripcion_form = (
+                        request.form.get(f'descripcion_{id_fact_item}', '') or ''
+                    ).strip()
+
+                    referencia_use = (
+                        referencia_form
+                        or (referencia_corregida_bd or '').strip()
+                        or (referencia or '').strip()
+                    )
+                    referencia_original = (
+                        (referencia_original_bd or '').strip()
+                        or (referencia or '').strip()
+                    )
+
+                    linea_validacion = (
+                        id_fila,
+                        referencia_use,
+                        descripcion_orig,
+                        cantidad,
+                        valor_unitario,
+                        inventariado,
+                        id_inventario_unico_bd,
+                    )
+
+                    # Revalidar estado real en backend con la referencia efectiva.
+                    estado = obtener_estado_linea(
+                        conn, (proveedor, fecha, None, None, None), linea_validacion
+                    )
                     if not estado.get('permitido'):
                         bloqueados += 1
                         continue
 
                     datos_est = estado.get('datos_estandarizados') or {}
-                    descripcion_est = datos_est.get('descripcion') or datos_est.get('descripcionEstandarizada') or descripcion_orig
-                    referencia_use = referencia
+                    descripcion_est = (
+                        datos_est.get('descripcion')
+                        or datos_est.get('descripcionEstandarizada')
+                        or descripcion_orig
+                    )
+
+                    # Edición manual de la descripción: sólo se usa cuando
+                    # difiere de la descripción original de la factura.
+                    if (
+                        descripcion_form
+                        and descripcion_form != (descripcion_orig or '').strip()
+                    ):
+                        descripcion_est = descripcion_form
 
                     valor_publico = request.form.get(
                         f'valor_publico_{id_fact_item}', ''
@@ -819,6 +931,17 @@ def ver_factura(id_factura):
                         continue
 
                     prov_use = datos_est.get('proveedor') or proveedor or ''
+                    datos_operativos = {
+                        "descripcionEstandarizada": descripcion_est,
+                        "referenciaProveedor": referencia_use,
+                        "referenciaRepuesto": datos_est.get('referenciaRepuesto'),
+                        "equivalente": datos_est.get('equivalente'),
+                        "marcaArticulo": datos_est.get('marca'),
+                        "marcaVehiculo": datos_est.get('carro'),
+                        "modelo": datos_est.get('modelo'),
+                        "lado": datos_est.get('lado'),
+                        "medida": datos_est.get('medida'),
+                    }
 
                     articulo = obtener_o_crear_articulo(
                         conn,
@@ -829,10 +952,11 @@ def ver_factura(id_factura):
                         precio_venta=precio_venta,
                         precio_cifrado=precio_cifrado,
                         precio_max_descuento=precio_max_desc,
-                        grupo='',
+                        grupo=datos_est.get('grupo') or '',
                         fecha=fecha or datetime.now().strftime('%Y-%m-%d'),
                         cantidad=cantidad,
                         sumar_cantidad=True,
+                        datos_operativos=datos_operativos,
                     )
                     inventario_id = articulo['id']
                     if not inventario_id:
@@ -842,9 +966,23 @@ def ver_factura(id_factura):
                         UPDATE inventarioFacturas
                         SET inventariado = 1,
                             id_inventarioUnico = ?,
-                            id_consolidado = COALESCE(?, id_consolidado)
+                            id_consolidado = COALESCE(?, id_consolidado),
+                            referenciaOriginal = COALESCE(referenciaOriginal, ?),
+                            referenciaCorregida = CASE
+                                WHEN UPPER(TRIM(?)) <> UPPER(TRIM(?)) THEN ?
+                                ELSE referenciaCorregida END,
+                            referencia = ?
                         WHERE id = ?
-                    """, (inventario_id, datos_est.get('id_consolidado'), id_fact_item))
+                    """, (
+                        inventario_id,
+                        datos_est.get('id_consolidado'),
+                        referencia_original,
+                        referencia_use,
+                        referencia_original,
+                        referencia_use,
+                        referencia_use,
+                        id_fact_item,
+                    ))
 
                     ids_para_imprimir.append(inventario_id)
                     procesados += 1
@@ -871,7 +1009,7 @@ def ver_factura(id_factura):
                     datos_impresion = cursor.fetchall()
 
                     cursor.execute("""
-                        SELECT ubicacion
+                        SELECT name, ubicacion
                         FROM bartenderFiles
                         WHERE idBartenderFiles = ?
                     """, (template_id,))
@@ -880,22 +1018,45 @@ def ver_factura(id_factura):
                     if not row_tpl:
                         raise Exception("Template BarTender no encontrado")
 
-                    ruta_template = row_tpl[0]
+                    plantilla_nombre = row_tpl[0]
+                    ruta_template = row_tpl[1]
                 elif ids_para_imprimir and not template_id:
                     raise Exception("Debe seleccionar una etiqueta BarTender")
 
             respaldo.actualizar_respaldo_si_posible(ruta_db=ruta_db)
 
-            # Fuera de transacción: imprimir solo si inventariado confirmado
+            # Fuera de transacción: encolar la impresión en el servidor.
             if datos_impresion and ruta_template:
                 try:
-                    imprimir_varios(
-                        datos_impresion,
-                        ruta_template=ruta_template,
-                        columna_inicio=1
+                    trabajo = impresion_servicio.crear_trabajo(
+                        ruta_db,
+                        usuario=session.get('usuario'),
+                        articulos=datos_impresion,
+                        id_plantilla=template_id,
+                        plantilla=plantilla_nombre,
+                        ruta_plantilla=ruta_template,
+                        origen='facturas',
+                        columna_inicio=1,
+                        clave_unica=request.form.get('clave_idempotencia'),
                     )
+                    if trabajo.get('duplicado'):
+                        flash(
+                            "La impresión ya estaba en la cola "
+                            f"(trabajo #{trabajo['idTrabajo']}).",
+                            "info",
+                        )
+                    else:
+                        flash(
+                            "Impresión encolada en el servidor "
+                            f"(trabajo #{trabajo['idTrabajo']}).",
+                            "info",
+                        )
                 except Exception as e_imp:
-                    flash(f"Inventariado correcto, pero error al imprimir: {e_imp}", "warning")
+                    flash(
+                        "Inventariado correcto, pero no se pudo encolar la "
+                        f"impresión: {e_imp}",
+                        "warning",
+                    )
                     return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
 
             if procesados > 0:
@@ -999,6 +1160,7 @@ def ver_factura(id_factura):
                 "lado": "",
                 "modelo": "",
                 "medida": "",
+                "grupo": "",
                 "precioListado": fila[4],
                 "ya_consolidado": ya_consolidado
             })
@@ -1025,8 +1187,11 @@ def ver_factura(id_factura):
 
 @facturas_bp.route('/pdf/<filename>')
 def ver_pdf(filename):
-    pdf_folder = os.path.join(os.getcwd(), 'bin', 'pdf')
-    print(f"Buscando PDF en: {pdf_folder} filename: {filename}")
+    pdf_folder = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'bin',
+        'pdf',
+    )
     return send_from_directory(pdf_folder, filename)
 
 def obtener_ultima_configuracion():
@@ -1041,6 +1206,7 @@ def obtener_ultima_configuracion():
         conn.close()
         if row:
             email_revision, token_contraseña, correos_varios = row
+            token_contraseña = seguridad.descifrar_token(token_contraseña)
             return email_revision, token_contraseña, correos_varios
     except Exception:
         pass

@@ -835,7 +835,43 @@ def procesar_consolidado(
 
     return df
 
-def procesar_dataframe_pendientes(df, archivo_estandarizacion):
+def _tiene_valor(valor):
+    """True si el valor contiene información utilizable."""
+
+    if valor is None:
+        return False
+
+    try:
+        if pd.isna(valor):
+            return False
+    except (TypeError, ValueError):
+        pass
+
+    return str(valor).strip() != ""
+
+
+def _asignar_si_vacio(df, indice, campo, valor):
+    """Escribe el valor calculado sólo cuando la celda está vacía."""
+
+    actual = df.at[indice, campo] if campo in df.columns else None
+    if not _tiene_valor(actual):
+        df.at[indice, campo] = valor
+
+
+def procesar_dataframe_pendientes(
+    df,
+    archivo_estandarizacion,
+    campos_manuales=None,
+):
+    """Estandariza un DataFrame respetando los valores manuales.
+
+    ``campos_manuales`` indica qué columnas provienen de la edición del
+    usuario. Para esas columnas un valor no vacío nunca se reemplaza por el
+    resultado calculado. Las columnas calculadas restantes sólo completan
+    celdas vacías, de modo que tampoco se sobrescriben datos válidos.
+    """
+
+    campos_manuales = set(campos_manuales or ())
 
     diccionarios = cargar_diccionarios(
         archivo_estandarizacion
@@ -883,14 +919,24 @@ def procesar_dataframe_pendientes(df, archivo_estandarizacion):
 
     df = df.copy()
 
+    for columna in (
+        "carro", "lado", "ladoAbreviado", "repuesto", "modelo",
+        "otros", "medida", "grupo", "descripcionEstandarizada",
+    ):
+        if columna not in df.columns:
+            df[columna] = ""
+
     # ==========================================
     # Aplicar ajustes a descripción
+    #
+    # Si la descripción fue editada manualmente se conserva tal cual.
     # ==========================================
 
-    df = reemplazar_descripcion_excel(
-        df,
-        AJUSTES
-    )
+    if "descripcion" not in campos_manuales:
+        df = reemplazar_descripcion_excel(
+            df,
+            AJUSTES
+        )
 
     # --------------------------------
     # Procesar registros
@@ -898,81 +944,90 @@ def procesar_dataframe_pendientes(df, archivo_estandarizacion):
 
     for i, fila in df.iterrows():
 
-        # CARRO
-        carro = fila.get("carro", "")
-
-        if (
-            pd.isna(carro)
-            or str(carro).strip() == ""
-        ):
-
+        # CARRO (marca del vehículo)
+        if not _tiene_valor(fila.get("carro")):
             marca = detectar_marca(
                 fila["descripcion"],
                 ABREVIATURAS
             )
-
             if marca:
                 df.at[i, "carro"] = marca
 
-        # LADO
-        lado = extraer_lado(
-            fila["descripcion"],
-            LADOS
-        )
-
-        df.at[i, "lado"] = lado
+        # LADO: el valor manual tiene prioridad.
+        lado_actual = df.at[i, "lado"]
+        if not _tiene_valor(lado_actual):
+            lado_actual = extraer_lado(
+                fila["descripcion"],
+                LADOS
+            )
+            df.at[i, "lado"] = lado_actual
 
         # LADO ABREVIADO
-        df.at[i, "ladoAbreviado"] = abreviar_lado(
-            lado,
-            LADOS_ORDEN
+        _asignar_si_vacio(
+            df, i, "ladoAbreviado",
+            abreviar_lado(lado_actual, LADOS_ORDEN),
         )
 
         # REPUESTO
-        repuesto = extraer_repuesto(
-            fila["descripcion"],
-            ABREVIATURAS,
-            LADOS
-        )
-
-        repuesto = estandarizar_repuesto(
-            repuesto,
-            patrones
-        )
-
-        df.at[i, "repuesto"] = repuesto
+        if not _tiene_valor(fila.get("repuesto")):
+            repuesto = extraer_repuesto(
+                fila["descripcion"],
+                ABREVIATURAS,
+                LADOS
+            )
+            repuesto = estandarizar_repuesto(
+                repuesto,
+                patrones
+            )
+            df.at[i, "repuesto"] = repuesto
 
         # MODELO
-        df.at[i, "modelo"] = extraer_modelo(
-            fila["descripcion"],
-            ABREVIATURAS,
-            LADOS
-        )
-
-        # OTROS
-        df.at[i, "otros"] = extraer_otros(
-            fila["descripcion"]
-        )
-
-        # MEDIDA
-        medida = extraer_medida(
-            fila.get("referenciaRepuesto")
-        )
-
-        if not medida:
-            medida = extraer_medida(
-                fila.get("equivalente")
+        if not _tiene_valor(fila.get("modelo")):
+            df.at[i, "modelo"] = extraer_modelo(
+                fila["descripcion"],
+                ABREVIATURAS,
+                LADOS
             )
 
-        df.at[i, "medida"] = medida
+        # OTROS
+        if not _tiene_valor(fila.get("otros")):
+            df.at[i, "otros"] = extraer_otros(
+                fila["descripcion"]
+            )
+
+        # MEDIDA
+        if not _tiene_valor(fila.get("medida")):
+            medida = extraer_medida(
+                fila.get("referenciaRepuesto")
+            )
+
+            if not medida:
+                medida = extraer_medida(
+                    fila.get("equivalente")
+                )
+
+            df.at[i, "medida"] = medida
 
     # --------------------------------
     # DESCRIPCIÓN ESTANDARIZADA
+    #
+    # Es manual sólo si el formulario la envió explícitamente; de lo
+    # contrario se calcula a partir de los campos anteriores.
     # --------------------------------
 
-    df["descripcionEstandarizada"] = df.apply(
-        concatenar_descripcion,
-        axis=1
-    )
+    if "descripcionEstandarizada" in campos_manuales:
+        df["descripcionEstandarizada"] = df.apply(
+            lambda fila: (
+                fila.get("descripcionEstandarizada")
+                if _tiene_valor(fila.get("descripcionEstandarizada"))
+                else concatenar_descripcion(fila)
+            ),
+            axis=1,
+        )
+    else:
+        df["descripcionEstandarizada"] = df.apply(
+            concatenar_descripcion,
+            axis=1
+        )
 
     return df

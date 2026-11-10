@@ -136,6 +136,56 @@
     margin-bottom: 0;
 }
 
+/* Barra superior sincronizada con el scroll horizontal de la tabla. */
+.tabla-scroll-top {
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 16px;
+    margin-bottom: 2px;
+    border-radius: 4px;
+    background: #f1f3f5;
+}
+
+.tabla-scroll-top-contenido {
+    height: 1px;
+}
+
+/* Descripción estandarizada: ocupa varias líneas, sin cortes agresivos. */
+.descripcion-estandarizada {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+    max-width: 100%;
+    vertical-align: top;
+}
+
+.descripcion-estandarizada.descripcion-expandida {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+}
+
+.desc-acciones {
+    display: block;
+    margin-top: 2px;
+    line-height: 1;
+}
+
+.desc-acciones .desc-accion {
+    padding: 0 .3rem;
+    font-size: .7rem;
+    text-decoration: none;
+}
+
+.descripcion-factura {
+    min-width: 220px;
+    resize: vertical;
+}
+
 .table-responsive {
     -webkit-overflow-scrolling: touch;
 }

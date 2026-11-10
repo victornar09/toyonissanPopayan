@@ -19,6 +19,122 @@
         <p class="text-muted mb-0">Parámetros principales de la aplicación y del correo de facturación.</p>
     </div>
 
+    <!-- SERVIDOR Y RED LOCAL -->
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-2 d-flex align-items-center gap-2">{{ icono('configuracion') }} Servidor y red local</h2>
+        <p class="text-muted">
+            La aplicación se ejecuta únicamente en este PC. Los demás equipos
+            deben abrirla en el navegador con la URL indicada; nunca deben abrir
+            la base de datos ni las carpetas del servidor.
+        </p>
+
+        <form action="" method="post" class="mb-3">
+            <input type="hidden" name="accion" value="guardar_servidor">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="nombre_servidor" class="form-label">Nombre del servidor</label>
+                    <input type="text" id="nombre_servidor" name="nombre_servidor"
+                           class="form-control" maxlength="120" required
+                           value="{{ servidor_config.nombre_servidor }}">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="host" class="form-label">Host de escucha</label>
+                    <input type="text" id="host" name="host" class="form-control"
+                           required value="{{ servidor_config.host }}">
+                    <div class="form-text">Recomendado: <code>0.0.0.0</code> para toda la LAN.</div>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label for="puerto" class="form-label">Puerto</label>
+                    <input type="number" id="puerto" name="puerto" class="form-control"
+                           min="1024" max="65535" required value="{{ servidor_config.puerto }}">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="hilos" class="form-label">Hilos (4–8)</label>
+                    <input type="number" id="hilos" name="hilos" class="form-control"
+                           min="4" max="8" required value="{{ servidor_config.hilos }}">
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-5 mb-3">
+                    <label class="form-label">IP local detectada</label>
+                    <input type="text" class="form-control" readonly
+                           value="{{ ip_local or 'No detectada' }}">
+                    <div class="form-text">Solo lectura; no se guarda en la configuración.</div>
+                </div>
+                <div class="col-md-5 mb-3">
+                    <label class="form-label">URL para los otros equipos</label>
+                    <input type="text" class="form-control" readonly value="{{ url_clientes }}">
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Estado</label>
+                    <div>
+                        {% if servidor_estado.en_ejecucion %}
+                            <span class="badge bg-success">En ejecución</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Detenido</span>
+                        {% endif %}
+                    </div>
+                    {% if servidor_estado.iniciado %}
+                        <div class="form-text">Desde {{ servidor_estado.iniciado }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Guardar configuración</button>
+            <span class="text-muted ms-2">
+                Los cambios de host o puerto requieren reiniciar el servicio.
+            </span>
+        </form>
+
+        <form action="" method="post" class="mb-3">
+            <input type="hidden" name="accion" value="probar_acceso_local">
+            <button type="submit" class="btn btn-outline-secondary">Probar acceso local</button>
+        </form>
+
+        <div class="alert alert-warning mb-3">
+            <strong>Importante:</strong> cambiar el host o el puerto no reinicia
+            la aplicación automáticamente. Detenga el servicio, vuelva a
+            iniciarlo y confirme la URL antes de avisar a los usuarios.
+        </div>
+
+        <h3 class="h6">Configuración recomendada en Windows</h3>
+        <ul class="text-muted small mb-0">
+            <li>Asigne al servidor una <strong>IP fija</strong> o una
+                <strong>reserva DHCP</strong> en el router para que la URL no cambie.</li>
+            <li>Permita el puerto <code>{{ servidor_config.puerto }}</code> en el
+                Firewall de Windows solo para <strong>redes privadas</strong>.</li>
+            <li>No abra puertos en el router ni exponga la aplicación a Internet.</li>
+            <li>El equipo servidor debe permanecer encendido y con BarTender,
+                la impresora y las plantillas disponibles para la misma cuenta
+                de Windows que ejecuta el servicio.</li>
+        </ul>
+    </div>
+
+    <!-- COLA DE IMPRESIÓN -->
+    <div class="card card-body border-0 shadow mb-4">
+        <h2 class="h5 mb-2">Cola de impresión</h2>
+        <p class="text-muted">
+            Los trabajos se procesan de uno en uno en este servidor. Si uno falla,
+            el inventariado y el código de barras se conservan; puede reintentarlo
+            o reimprimirlo.
+        </p>
+        <div class="tabla-scroll">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>#</th><th>Fecha</th><th>Usuario</th><th>Plantilla</th>
+                        <th>Artículos</th><th>Intentos</th><th>Estado</th>
+                        <th>Error</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="cola-impresion">
+                    <tr><td colspan="9" class="text-muted">Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- SEGUNDA PARTE ADAPTADA -->
     <div class="card card-body border-0 shadow mb-4">
         <h2 class="h5 mb-4">Configuración avanzada</h2>
@@ -70,8 +186,14 @@
                     <input type="email" id="email_revision" name="email_revision" class="form-control" required value="{{ email_revision }}">
                 </div>
                 <div class="col-md-6 mb-3">
-                    <label for="token_contraseña" class="form-label">Token Contraseña</label>
-                    <input type="password" id="token_contraseña" name="token_contraseña" class="form-control" required value="{{ token_contraseña }}">
+                    <label for="token_contraseña" class="form-label">
+                        Token Contraseña
+                        {% if token_configurado %}
+                            <span class="badge bg-success">Configurado</span>
+                        {% endif %}
+                    </label>
+                    <input type="password" id="token_contraseña" name="token_contraseña" class="form-control" value="" autocomplete="new-password" placeholder="Dejar en blanco para conservar el actual">
+                    <div class="form-text">Se guarda cifrado. Nunca se muestra el valor actual.</div>
                 </div>
             </div>
 
@@ -276,7 +398,7 @@
                 {% for t in bartender_templates %}
                 <tr>
                     <td>{{ t[1] }}</td>
-                    <td>{{ t[2] }}</td>
+                    <td><code>{{ t[2]|basename }}</code></td>
                     <td><code>{{ t[3] }}</code></td>
                     <td>
                         {% if t[4] %}
@@ -440,4 +562,104 @@
 {% block stylesheets %}{% endblock stylesheets %}
 
 <!-- Specific Page JS goes HERE  -->
-{% block javascripts %}{% endblock javascripts %}
+{% block javascripts %}
+<script>
+(function () {
+    var cuerpo = document.getElementById("cola-impresion");
+    if (!cuerpo) { return; }
+
+    function celda(texto, clase) {
+        var td = document.createElement("td");
+        if (texto !== undefined && texto !== null) { td.textContent = texto; }
+        if (clase) { td.className = clase; }
+        return td;
+    }
+
+    function insignia(estado) {
+        var clases = {
+            PENDIENTE: "bg-warning text-dark",
+            PROCESANDO: "bg-info text-dark",
+            IMPRESO: "bg-success",
+            ERROR: "bg-danger"
+        };
+        var span = document.createElement("span");
+        span.className = "badge " + (clases[estado] || "bg-secondary");
+        span.textContent = estado || "";
+        return span;
+    }
+
+    function accion(id, tipo) {
+        return fetch("/impresion/" + id + "/" + tipo, { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (datos) {
+                if (!datos.ok) { alert(datos.error || "No se pudo completar la acción."); }
+                cargar();
+            })
+            .catch(function () { alert("No se pudo contactar con el servidor."); });
+    }
+
+    function fila(trabajo) {
+        var tr = document.createElement("tr");
+        tr.appendChild(celda(trabajo.idTrabajo));
+        tr.appendChild(celda(trabajo.fecha));
+        tr.appendChild(celda(trabajo.usuario));
+        tr.appendChild(celda(trabajo.plantilla));
+        tr.appendChild(celda(trabajo.articulos));
+        tr.appendChild(celda(trabajo.intentos));
+        var tdEstado = document.createElement("td");
+        tdEstado.appendChild(insignia(trabajo.estado));
+        tr.appendChild(tdEstado);
+        tr.appendChild(celda(trabajo.mensajeError || "", "text-danger small"));
+        var tdAcciones = document.createElement("td");
+        if (trabajo.estado === "ERROR" || trabajo.estado === "PENDIENTE") {
+            var reintentar = document.createElement("button");
+            reintentar.className = "btn btn-sm btn-outline-warning me-1";
+            reintentar.textContent = "Reintentar";
+            reintentar.addEventListener("click", function () {
+                accion(trabajo.idTrabajo, "reintentar");
+            });
+            tdAcciones.appendChild(reintentar);
+        }
+        var reimprimir = document.createElement("button");
+        reimprimir.className = "btn btn-sm btn-outline-secondary";
+        reimprimir.textContent = "Reimprimir";
+        reimprimir.addEventListener("click", function () {
+            accion(trabajo.idTrabajo, "reimprimir");
+        });
+        tdAcciones.appendChild(reimprimir);
+        tr.appendChild(tdAcciones);
+        return tr;
+    }
+
+    function cargar() {
+        fetch("/impresion/", { headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.json(); })
+            .then(function (datos) {
+                cuerpo.innerHTML = "";
+                if (!datos.ok || !datos.trabajos || !datos.trabajos.length) {
+                    var tr = document.createElement("tr");
+                    var td = celda("No hay trabajos de impresión.", "text-muted");
+                    td.colSpan = 9;
+                    tr.appendChild(td);
+                    cuerpo.appendChild(tr);
+                    return;
+                }
+                datos.trabajos.forEach(function (trabajo) {
+                    cuerpo.appendChild(fila(trabajo));
+                });
+            })
+            .catch(function () {
+                cuerpo.innerHTML = "";
+                var tr = document.createElement("tr");
+                var td = celda("No se pudo cargar la cola.", "text-danger");
+                td.colSpan = 9;
+                tr.appendChild(td);
+                cuerpo.appendChild(tr);
+            });
+    }
+
+    cargar();
+    setInterval(cargar, 7000);
+})();
+</script>
+{% endblock javascripts %}

@@ -1,0 +1,7 @@
+{
+  "nombre_servidor": "TOYO-SERVIDOR",
+  "host": "0.0.0.0",
+  "puerto": 5000,
+  "hilos": 6,
+  "debug": false
+}

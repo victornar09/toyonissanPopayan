@@ -204,9 +204,10 @@
                                     </td>
 
                                     <td class="col-descripcion">
-                                        <input type="text" name="descripcion_{{ item_id }}" class="form-control form-control-sm"
-                                               value="{{ descripcion }}" autocomplete="off"
-                                               {% if codigo_estado == 'INVENTARIADO' %}readonly{% endif %}>
+                                        <textarea name="descripcion_{{ item_id }}" class="form-control form-control-sm descripcion-factura"
+                                                  rows="2" autocomplete="off"
+                                                  title="{{ descripcion }}"
+                                                  {% if codigo_estado == 'INVENTARIADO' %}readonly{% endif %}>{{ descripcion }}</textarea>
                                     </td>
 
                                     <td class="col-dinero">
@@ -565,6 +566,9 @@
                             <th>Medida
                                 <span class="pista">Ej. 16"</span>
                             </th>
+                            <th>Grupo
+                                <span class="pista">Categoría interna</span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody id="tbodyPendientes">
@@ -621,6 +625,11 @@
                                 <input type="text" class="form-control form-control-sm ancho-corto" name="medida[]"
                                        value="{{ articulo.medida if articulo.medida else '' }}" placeholder="16&quot;"
                                        title="Medida del repuesto" autocomplete="off">
+                            </td>
+                            <td>
+                                <input type="text" class="form-control form-control-sm ancho-corto" name="grupo[]"
+                                       value="{{ articulo.grupo if articulo.grupo else '' }}" placeholder="Grupo"
+                                       title="Grupo o categoría interna del artículo" autocomplete="off">
                             </td>
                             <input type="hidden" name="precioListado[]" value="{{ articulo.precioListado }}">
                         </tr>

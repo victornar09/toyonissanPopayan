@@ -1,5 +1,12 @@
 bin/codigos/*
 
+# Configuración local del servidor y datos transitorios
+config/servidor.json
+config/estado_servidor.json
+config/.secret_key
+temp/
+logs/
+
 bin/pdf/*
 !bin/pdf/.gitkeep
 

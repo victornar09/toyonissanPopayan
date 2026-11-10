@@ -20,6 +20,27 @@ def _texto(valor):
     return str(valor).strip()
 
 
+CAMPOS_OPERATIVOS = (
+    "descripcionEstandarizada",
+    "referenciaProveedor",
+    "referenciaRepuesto",
+    "equivalente",
+    "marcaArticulo",
+    "marcaVehiculo",
+    "modelo",
+    "lado",
+    "medida",
+)
+
+
+def _texto_operativo(datos, campo):
+    """Extrae un campo operativo de forma tolerante a None/espacios."""
+
+    if not datos:
+        return ""
+    return _texto(datos.get(campo))
+
+
 def obtener_o_crear_articulo(
     conn,
     *,
@@ -37,12 +58,27 @@ def obtener_o_crear_articulo(
     fecha=None,
     cantidad=0,
     sumar_cantidad=False,
+    datos_operativos=None,
 ):
     """Crea el artículo de inventario o reutiliza el existente.
+
+    ``datos_operativos`` contiene la información del Consolidado que debe
+    quedar persistida en Inventario (referencias, marcas, modelo, lado,
+    medida y descripción estandarizada). En un artículo existente sólo se
+    completan campos vacíos: nunca se sobrescribe un dato válido.
 
     Devuelve ``dict`` con ``id``, ``codigoBarras`` y ``reutilizado``.
     No imprime etiquetas: la impresión se maneja fuera de la transacción.
     """
+
+    operativos = {
+        campo: _texto_operativo(datos_operativos, campo)
+        for campo in CAMPOS_OPERATIVOS
+    }
+    if not operativos["descripcionEstandarizada"]:
+        operativos["descripcionEstandarizada"] = _texto(descripcion)
+    if not operativos["referenciaProveedor"]:
+        operativos["referenciaProveedor"] = _texto(referencia)
 
     cursor = conn.cursor()
     cursor.execute(
@@ -60,12 +96,51 @@ def obtener_o_crear_articulo(
     if fila:
         articulo_id, codigo = fila
 
+        # Los datos de identidad se completan únicamente cuando están vacíos.
+        # Los datos comerciales/ubicación sí respetan lo que el usuario acaba
+        # de indicar en el formulario de inventariado.
         cursor.execute(
             """
             UPDATE inventarioUnico
-            SET descripcion = COALESCE(NULLIF(?, ''), descripcion),
-                referencia = COALESCE(NULLIF(?, ''), referencia),
-                proveedor = COALESCE(NULLIF(?, ''), proveedor),
+            SET descripcion = CASE
+                    WHEN descripcion IS NULL OR TRIM(descripcion) = ''
+                    THEN NULLIF(?, '') ELSE descripcion END,
+                descripcionEstandarizada = CASE
+                    WHEN descripcionEstandarizada IS NULL
+                         OR TRIM(descripcionEstandarizada) = ''
+                    THEN NULLIF(?, '') ELSE descripcionEstandarizada END,
+                referencia = CASE
+                    WHEN referencia IS NULL OR TRIM(referencia) = ''
+                    THEN NULLIF(?, '') ELSE referencia END,
+                referenciaProveedor = CASE
+                    WHEN referenciaProveedor IS NULL
+                         OR TRIM(referenciaProveedor) = ''
+                    THEN NULLIF(?, '') ELSE referenciaProveedor END,
+                referenciaRepuesto = CASE
+                    WHEN referenciaRepuesto IS NULL
+                         OR TRIM(referenciaRepuesto) = ''
+                    THEN NULLIF(?, '') ELSE referenciaRepuesto END,
+                equivalente = CASE
+                    WHEN equivalente IS NULL OR TRIM(equivalente) = ''
+                    THEN NULLIF(?, '') ELSE equivalente END,
+                marcaArticulo = CASE
+                    WHEN marcaArticulo IS NULL OR TRIM(marcaArticulo) = ''
+                    THEN NULLIF(?, '') ELSE marcaArticulo END,
+                marcaVehiculo = CASE
+                    WHEN marcaVehiculo IS NULL OR TRIM(marcaVehiculo) = ''
+                    THEN NULLIF(?, '') ELSE marcaVehiculo END,
+                modelo = CASE
+                    WHEN modelo IS NULL OR TRIM(modelo) = ''
+                    THEN NULLIF(?, '') ELSE modelo END,
+                lado = CASE
+                    WHEN lado IS NULL OR TRIM(lado) = ''
+                    THEN NULLIF(?, '') ELSE lado END,
+                medida = CASE
+                    WHEN medida IS NULL OR TRIM(medida) = ''
+                    THEN NULLIF(?, '') ELSE medida END,
+                proveedor = CASE
+                    WHEN proveedor IS NULL OR TRIM(proveedor) = ''
+                    THEN NULLIF(?, '') ELSE proveedor END,
                 grupo = COALESCE(NULLIF(?, ''), grupo),
                 ubicacion = COALESCE(NULLIF(?, ''), ubicacion),
                 estante = COALESCE(NULLIF(?, ''), estante),
@@ -83,7 +158,16 @@ def obtener_o_crear_articulo(
             """,
             (
                 _texto(descripcion),
+                operativos["descripcionEstandarizada"],
                 _texto(referencia),
+                operativos["referenciaProveedor"],
+                operativos["referenciaRepuesto"],
+                operativos["equivalente"],
+                operativos["marcaArticulo"],
+                operativos["marcaVehiculo"],
+                operativos["modelo"],
+                operativos["lado"],
+                operativos["medida"],
                 _texto(proveedor),
                 _texto(grupo),
                 _texto(ubicacion),
@@ -119,18 +203,30 @@ def obtener_o_crear_articulo(
     cursor.execute(
         """
         INSERT INTO inventarioUnico (
-            descripcion, descripcionClave, referencia, cantidad,
-            precioVenta, precioVentaCifrado, precioMaxDescuento,
+            descripcion, descripcionClave, descripcionEstandarizada,
+            referencia, referenciaProveedor, referenciaRepuesto,
+            equivalente, marcaArticulo, marcaVehiculo, modelo, lado, medida,
+            cantidad, precioVenta, precioVentaCifrado, precioMaxDescuento,
             grupo, proveedor, fechaActualizacion,
             ubicacion, estante, costo,
             estadoEtiquetado, estadoConteo
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', 'SIN_CONTAR')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                'PENDIENTE', 'SIN_CONTAR')
         """,
         (
             _texto(descripcion),
             descripcion_clave,
+            operativos["descripcionEstandarizada"],
             _texto(referencia),
+            operativos["referenciaProveedor"],
+            operativos["referenciaRepuesto"],
+            operativos["equivalente"],
+            operativos["marcaArticulo"],
+            operativos["marcaVehiculo"],
+            operativos["modelo"],
+            operativos["lado"],
+            operativos["medida"],
             int(cantidad or 0) if sumar_cantidad else 0,
             precio_venta or 0,
             _texto(precio_cifrado),
