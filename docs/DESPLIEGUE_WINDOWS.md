@@ -250,7 +250,11 @@ archivo temporal, estado, error e intentos.
 - Un único worker procesa un trabajo a la vez.
 - Archivo único por trabajo:
   `temp/impresion_<id_trabajo>_<fecha_hora>.csv`.
-- Ya no se usa `productos_temp.csv` compartido.
+- Antes de imprimir, los mismos datos se publican de forma atómica en el CSV
+  que tienen enlazado las plantillas: `productos_temp.csv` en la raíz del
+  proyecto. La ruta se puede cambiar con `TOYONISSAN_CSV_IMPRESION`.
+- Si el CSV compartido está bloqueado por BarTender, el trabajo queda en
+  `ERROR`; así se evita imprimir con los valores del trabajo anterior.
 - La transacción se cierra antes de llamar a BarTender.
 - Si falla: el trabajo queda en `ERROR`, no se revierte el inventariado, no se
   genera otro código y se puede **Reintentar** o **Reimprimir** desde

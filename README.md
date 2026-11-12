@@ -9,7 +9,7 @@ El objetivo es agilizar el paso de **factura → inventario**:
 - **Inventariar** (revisar y procesar) cada línea de factura: ajustar descripción, referencia del repuesto, equivalente, marca/carro, lado, precio de venta, etc.
 - **Estandarizar** la información usando el archivo `bin/xlsx/estandarizacion.xlsx` (diccionarios de repuestos, lados, abreviados, ajustes, abreviaturas).
 - **Unificar el inventario** (`inventarioUnico`) con clave normalizada (`descripcionClave`) para evitar duplicados, acumulando cantidades al inventariar.
-- **Imprimir etiquetas** con BarTender (`bartenderFiles/`) generando un CSV temporal `productos_temp.csv`.
+- **Imprimir etiquetas** con BarTender (`bartenderFiles/`) generando un CSV por trabajo y publicando los datos en `productos_temp.csv`, el archivo enlazado a las plantillas.
 - **Gestionar catálogo maestro**: proveedores, ubicaciones, grupos, base de datos activa, configuraciones de correo, etc.
 
 ## Interfaz y experiencia de usuario
@@ -81,7 +81,7 @@ toyonissanPopayan/
 ├── requirements.txt
 ├── requirementsWindows.txt
 ├── inserts.txt
-├── productos_temp.csv    # Generado al imprimir
+├── productos_temp.csv    # CSV enlazado a las plantillas BarTender (se actualiza al imprimir)
 ├── bartendersFiles/      # Plantillas .btw de BarTender
 ├── bdlocal/              # Bases SQLite creadas/activas (.sqlite + .bd_activa)
 ├── bin/
@@ -138,7 +138,7 @@ Ruta: `/facturas/ver/<id_factura>` (POST al seleccionar líneas)
 4. Genera `descripcionClave = normalizar_clave(descripcion)`.
 5. Inserta/actualiza en `inventarioUnico` con `ON CONFLICT(descripcionClave) DO UPDATE`: suma cantidad, actualiza precio/proveedor/fecha/grupo, mantiene referencia.
 6. Marca `inventarioFacturas.inventariado = 1` y relaciona `id_inventarioUnico`.
-7. Recolecta items a imprimir (con código de barras, descripción cifrada, cantidad, sigla proveedor) y llama `imprimir_varios()` con template BarTender seleccionado → genera `productos_temp.csv` y abre/manda a imprimir con COM.
+7. Recolecta items a imprimir (con código de barras, descripción cifrada, cantidad, sigla proveedor) y encola el trabajo con `impresion_servicio.crear_trabajo()` con la plantilla BarTender seleccionada; el worker genera un CSV único por trabajo, actualiza `productos_temp.csv` (el archivo enlazado a las plantillas) y manda a imprimir con COM.
 8. Redirige al detalle.
 
 ### 4. Estandarizar y actualizar consolidado maestro
@@ -267,7 +267,7 @@ limitaciones de SQLite y migración futura a PostgreSQL.
 ## Notas operativas
 
 - **Gmail IMAP**: Requiere contraseña de aplicación. El token se guarda en `configuracion.token_contraseña`.
-- **BarTender**: Requiere Windows + BarTender instalado + `pywin32`. Usa COM; abre aplicación visible (`bt.Visible = True`). Genera `productos_temp.csv` en raíz.
+- **BarTender**: Requiere Windows + BarTender instalado + `pywin32`. Usa COM; abre aplicación visible (`bt.Visible = True`). Genera un CSV único por trabajo en `temp/` y actualiza `productos_temp.csv` justo antes de imprimir, porque las plantillas están enlazadas a ese archivo. La ruta se puede cambiar con `TOYONISSAN_CSV_IMPRESION`.
 - **Precios**: Se redondean a miles para precio venta en algunas rutas (`round(precio_venta, -3)`) y se aplica 10% de descuento para `precioMaxDescuento`.
 - **Duplicados**: La deduplicación se hace por `descripcionClave` normalizada. Al inventariar desde factura se suma cantidad si ya existe.
 - **PDFs/XML**: Se guardan en `bin/pdf/` y `bin/xml/`. La ruta PDF se guarda en `facturas.ubicacion_pdf`.

@@ -1,7 +1,9 @@
 """Cola de impresión centralizada para BarTender.
 
 Un único worker procesa los trabajos en orden.  Cada trabajo usa su propio
-archivo CSV dentro de ``temp/``; nunca se reutiliza ``productos_temp.csv``.
+archivo CSV dentro de ``temp/`` y, antes de imprimir, esos mismos datos se
+publican en el CSV compartido que tienen enlazado las plantillas BarTender
+(``productos_temp.csv`` por defecto).
 """
 
 from __future__ import annotations
@@ -295,42 +297,109 @@ def reimprimir_trabajo(ruta_db, id_trabajo, usuario=None):
 # Motor BarTender
 # ---------------------------------------------------------------------------
 
-def _escribir_csv(id_trabajo, articulos, columna_inicio=1):
-    os.makedirs(TEMPORAL_DIR, exist_ok=True)
-    fecha = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    ruta_csv = os.path.join(
-        TEMPORAL_DIR, f"impresion_{id_trabajo}_{fecha}.csv"
-    )
+def _ruta_csv_compartido():
+    """CSV enlazado en las plantillas BarTender.
 
+    Por defecto es ``productos_temp.csv`` en la raíz del proyecto, que es el
+    archivo que leen las plantillas existentes.  Se puede cambiar con la
+    variable de entorno ``TOYONISSAN_CSV_IMPRESION``.
+    """
+
+    personalizada = os.environ.get("TOYONISSAN_CSV_IMPRESION", "").strip()
+    if personalizada:
+        return os.path.abspath(os.path.expanduser(personalizada))
+    return os.path.join(BASE_DIR, "productos_temp.csv")
+
+
+def _filas_csv(articulos, columna_inicio=1):
     incluye_proveedor = any(
         articulo.get("proveedor") for articulo in articulos
     )
 
-    with open(ruta_csv, "w", newline="", encoding="utf-8") as archivo:
-        writer = csv.writer(archivo)
+    if incluye_proveedor:
+        filas = [
+            ["codigo", "descripcion", "precio", "copias", "proveedor",
+             "inicio_columna"]
+        ]
+    else:
+        filas = [
+            ["codigo", "descripcion", "precio", "copias", "inicio_columna"]
+        ]
+
+    for articulo in articulos:
+        fila = [
+            articulo.get("codigo", ""),
+            articulo.get("descripcion", ""),
+            articulo.get("precio", ""),
+            articulo.get("cantidad", 1),
+        ]
         if incluye_proveedor:
-            writer.writerow(
-                ["codigo", "descripcion", "precio", "copias", "proveedor",
-                 "inicio_columna"]
-            )
-        else:
-            writer.writerow(
-                ["codigo", "descripcion", "precio", "copias", "inicio_columna"]
-            )
+            fila.append(articulo.get("proveedor", ""))
+        fila.append(columna_inicio)
+        filas.append(fila)
 
-        for articulo in articulos:
-            fila = [
-                articulo.get("codigo", ""),
-                articulo.get("descripcion", ""),
-                articulo.get("precio", ""),
-                articulo.get("cantidad", 1),
-            ]
-            if incluye_proveedor:
-                fila.append(articulo.get("proveedor", ""))
-            fila.append(columna_inicio)
-            writer.writerow(fila)
+    return filas
 
+
+def _escribir_csv_en(ruta, articulos, columna_inicio=1):
+    directorio = os.path.dirname(ruta)
+    if directorio:
+        os.makedirs(directorio, exist_ok=True)
+
+    with open(ruta, "w", newline="", encoding="utf-8") as archivo:
+        csv.writer(archivo).writerows(
+            _filas_csv(articulos, columna_inicio)
+        )
+
+
+def _escribir_csv(id_trabajo, articulos, columna_inicio=1):
+    fecha = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    ruta_csv = os.path.join(
+        TEMPORAL_DIR, f"impresion_{id_trabajo}_{fecha}.csv"
+    )
+    _escribir_csv_en(ruta_csv, articulos, columna_inicio)
     return ruta_csv
+
+
+def _publicar_csv_compartido(articulos, columna_inicio=1):
+    """Actualiza de forma atómica el CSV que leen las plantillas BarTender.
+
+    BarTender abre el archivo al imprimir; si está bloqueado se reintenta unos
+    instantes.  Si no se puede actualizar se lanza un error para no imprimir
+    etiquetas con los valores del trabajo anterior.
+    """
+
+    destino = _ruta_csv_compartido()
+    directorio = os.path.dirname(destino) or BASE_DIR
+    os.makedirs(directorio, exist_ok=True)
+
+    temporal = os.path.join(
+        directorio,
+        f".productos_temp_{os.getpid()}_{threading.get_ident()}.tmp",
+    )
+
+    try:
+        _escribir_csv_en(temporal, articulos, columna_inicio)
+        for intento in range(6):
+            try:
+                os.replace(temporal, destino)
+                break
+            except PermissionError:
+                if intento == 5:
+                    raise RuntimeError(
+                        "No se pudo actualizar el CSV de impresión "
+                        f"'{destino}'. Cierre BarTender o verifique que el "
+                        "archivo no esté bloqueado e intente de nuevo."
+                    )
+                time.sleep(0.2)
+    finally:
+        if os.path.exists(temporal):
+            try:
+                os.remove(temporal)
+            except OSError:
+                pass
+
+    return destino
 
 
 def _motor_bartender(ruta_csv, ruta_plantilla):
@@ -450,6 +519,11 @@ def procesar_siguiente(ruta_db=None, motor=None):
     try:
         ruta_csv = _escribir_csv(
             id_trabajo, articulos, trabajo.get("columnaInicio") or 1
+        )
+        # Las plantillas BarTender están enlazadas al CSV compartido; hay que
+        # publicar en él los valores de este trabajo justo antes de imprimir.
+        _publicar_csv_compartido(
+            articulos, trabajo.get("columnaInicio") or 1
         )
 
         conn = db.conectar(ruta_db)

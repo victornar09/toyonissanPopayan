@@ -1,6 +1,7 @@
 """Pruebas de servidor local, seguridad, SQLite WAL, impresión y respaldos."""
 
 import json
+import csv
 import os
 import shutil
 import sqlite3
@@ -44,6 +45,15 @@ class BaseServidor(unittest.TestCase):
         parche_temp = patch.object(impresion, "TEMPORAL_DIR", self.temp_impresion)
         parche_temp.start()
         self.addCleanup(parche_temp.stop)
+
+        self.csv_compartido = os.path.join(self.dir, "productos_temp.csv")
+        parche_csv = patch.object(
+            impresion,
+            "_ruta_csv_compartido",
+            return_value=self.csv_compartido,
+        )
+        parche_csv.start()
+        self.addCleanup(parche_csv.stop)
 
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
@@ -299,6 +309,20 @@ class TestColaImpresion(BaseServidor):
             nombre = os.path.basename(ruta)
             self.assertTrue(nombre.startswith("impresion_"))
             self.assertTrue(nombre.endswith(".csv"))
+
+    def test_actualiza_csv_compartido_antes_de_imprimir(self):
+        self.crear_trabajo(codigo="00000042")
+
+        def motor(ruta_csv, ruta_plantilla):
+            # El CSV compartido ya debe tener los valores de este trabajo.
+            with open(self.csv_compartido, newline="", encoding="utf-8") as archivo:
+                filas = list(csv.reader(archivo))
+            self.assertEqual(filas[0][0], "codigo")
+            self.assertEqual(filas[1][0], "00000042")
+            self.assertTrue(os.path.isfile(ruta_csv))
+
+        resultado = impresion.procesar_siguiente(self.ruta, motor=motor)
+        self.assertEqual(resultado["estado"], impresion.IMPRESO)
 
     def test_doble_clic_no_crea_dos_trabajos(self):
         primero = self.crear_trabajo(clave="misma-clave")
