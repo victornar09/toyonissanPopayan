@@ -835,6 +835,72 @@ def _migrar_impresion_auditoria(conn):
         )
 
 
+def _migrar_busqueda_facturas(conn):
+    """Índices de apoyo para la búsqueda transversal de artículos.
+
+    Sólo crea índices; nunca modifica datos de Facturas, Consolidado ni
+    Inventario. Todos los ``CREATE INDEX`` son idempotentes y tolerantes a
+    bases antiguas a las que les falte alguna tabla.
+    """
+
+    indices = []
+
+    if _tabla_existe(conn, "inventarioFacturas"):
+        indices.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_invf_factura "
+                "ON inventarioFacturas (id_factura)",
+                "CREATE INDEX IF NOT EXISTS idx_invf_referencia "
+                "ON inventarioFacturas (referencia)",
+                "CREATE INDEX IF NOT EXISTS idx_invf_inventariado "
+                "ON inventarioFacturas (inventariado)",
+                "CREATE INDEX IF NOT EXISTS idx_invf_inventario_unico "
+                "ON inventarioFacturas (id_inventarioUnico)",
+            ]
+        )
+
+    if _tabla_existe(conn, "facturas"):
+        indices.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_facturas_id "
+                "ON facturas (id_factura)",
+                "CREATE INDEX IF NOT EXISTS idx_facturas_fecha "
+                "ON facturas (fecha)",
+                "CREATE INDEX IF NOT EXISTS idx_facturas_proveedor "
+                "ON facturas (proveedor)",
+            ]
+        )
+
+    if _tabla_existe(conn, "consolidado"):
+        indices.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_consolidado_ref_proveedor "
+                "ON consolidado (referenciaProveedor)",
+                "CREATE INDEX IF NOT EXISTS idx_consolidado_ref_repuesto "
+                "ON consolidado (referenciaRepuesto)",
+                "CREATE INDEX IF NOT EXISTS idx_consolidado_equivalente "
+                "ON consolidado (equivalente)",
+            ]
+        )
+
+    if _tabla_existe(conn, "proveedor"):
+        indices.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_proveedor_nombre_norm "
+                "ON proveedor (UPPER(TRIM(nombreProveedor)))",
+                "CREATE INDEX IF NOT EXISTS idx_proveedor_siglas "
+                "ON proveedor (siglas)",
+            ]
+        )
+
+    for sql in indices:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            # Índice funcional no soportado o columna ausente: se continúa.
+            pass
+
+
 def migrar(conn):
     """Aplica todas las migraciones pendientes. Idempotente."""
 
@@ -846,6 +912,7 @@ def migrar(conn):
     _migrar_conteo_fisico(conn)
     _migrar_ion(conn)
     _migrar_impresion_auditoria(conn)
+    _migrar_busqueda_facturas(conn)
     conn.commit()
 
 

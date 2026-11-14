@@ -11,6 +11,7 @@ import pandas as pd
 import db
 from utilidades import cifrar_precio, a_entero, normalizar_clave
 from facturas.validacion_consolidado import obtener_estados_factura, obtener_estado_linea, resolver_proveedor
+from facturas import busqueda as busqueda_facturas
 from facturas.xml_utils import (
     extraer_total_xml,
     extraer_total_desde_elemento,
@@ -24,6 +25,44 @@ import seguridad
 
 
 facturas_bp = Blueprint('facturas', __name__, url_prefix='/facturas')
+
+
+_RUTA_BUSQUEDA = '/facturas/buscar-articulos'
+
+
+def return_to_seguro(valor):
+    """Devuelve ``return_to`` sólo si apunta a la búsqueda interna.
+
+    Rechaza esquemas, hosts, rutas absolutas de red (``//``), barras
+    invertidas y cualquier destino que no sea la propia búsqueda de facturas.
+    """
+
+    from urllib.parse import urlsplit
+
+    if not valor:
+        return None
+
+    texto = str(valor).strip()
+    if not texto.startswith('/') or texto.startswith('//'):
+        return None
+    if '\\' in texto or '\r' in texto or '\n' in texto:
+        return None
+
+    partes = urlsplit(texto)
+    if partes.scheme or partes.netloc:
+        return None
+    if not partes.path.startswith(_RUTA_BUSQUEDA):
+        return None
+
+    return texto
+
+
+def _url_ver_factura(id_factura, return_to=None, **extra):
+    parametros = {'id_factura': id_factura}
+    if return_to:
+        parametros['return_to'] = return_to
+    parametros.update(extra)
+    return url_for('facturas.ver_factura', **parametros)
 
 
 def _ruta_xml_factura(id_factura):
@@ -562,6 +601,41 @@ def facturas():
         facturas_list=facturas_list
     )
 
+@facturas_bp.route('/buscar-articulos')
+def buscar_articulos():
+    """Búsqueda transversal de artículos en facturas (sólo lectura)."""
+
+    ruta_db = db.ruta_bd_activa()
+
+    if not ruta_db:
+        return "No hay base de datos creada", 404
+
+    filtros = busqueda_facturas.extraer_filtros(request.args)
+
+    resultado = busqueda_facturas.buscar_articulos(
+        ruta_db,
+        filtros,
+        pagina=request.args.get('pagina', 1),
+    )
+
+    # Filtros sin paginación, para conservarlos en la paginación y en el
+    # enlace "Volver a resultados" del detalle.
+    parametros = {
+        clave: valor
+        for clave, valor in request.args.to_dict(flat=True).items()
+        if clave != 'pagina' and valor
+    }
+
+    return render_template(
+        'facturas/buscar_articulos.html',
+        filtros=filtros,
+        resultado=resultado,
+        estados=busqueda_facturas.ESTADOS,
+        parametros=parametros,
+        return_to_actual=request.full_path.rstrip('?'),
+    )
+
+
 @facturas_bp.route('/ver/<id_factura>', methods=['GET', 'POST'])
 def ver_factura(id_factura):
 
@@ -569,6 +643,20 @@ def ver_factura(id_factura):
 
     if not ruta_db:
         return "No hay base de datos creada", 404
+
+    # ===============================
+    # Navegación de regreso a la búsqueda de artículos
+    # ===============================
+    return_to_post = None
+    if request.method == 'POST':
+        return_to_post = return_to_seguro(request.form.get('return_to')) or \
+            return_to_seguro(session.get('facturas_return_to'))
+    else:
+        return_to_post = return_to_seguro(request.args.get('return_to'))
+        if return_to_post:
+            session['facturas_return_to'] = return_to_post
+        else:
+            session.pop('facturas_return_to', None)
 
     # ===============================
     # POST → Inventariar o procesar pendientes a consolidado
@@ -594,7 +682,7 @@ def ver_factura(id_factura):
                     factura = cursor.fetchone()
                     if not factura:
                         flash("No se encontró la factura.", "danger")
-                        return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
+                        return redirect(_url_ver_factura(id_factura, return_to_post))
 
                     seleccionados_idx = request.form.getlist("seleccionados_consolidado[]")
                     referencias_proveedor = request.form.getlist("referenciaProveedor[]")
@@ -720,7 +808,7 @@ def ver_factura(id_factura):
                             f"errores {errores}. No se creó ningún artículo.",
                             "warning",
                         )
-                        return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
+                        return redirect(_url_ver_factura(id_factura, return_to_post, procesar=1))
 
                     df = pd.DataFrame(articulos_df)
                     # Los valores enviados por el formulario son ediciones del
@@ -790,10 +878,10 @@ def ver_factura(id_factura):
                         f"omitidos {omitidos + amb_res}, ambiguos {ambiguos}, errores {errores}",
                         "success" if creados_res or mod_res else "warning",
                     )
-                    return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
+                    return redirect(_url_ver_factura(id_factura, return_to_post, procesar=1))
             except Exception as e:
                 flash(f"Error procesando artículos a consolidado: {e}", "danger")
-                return redirect(url_for('facturas.ver_factura', id_factura=id_factura, procesar=1))
+                return redirect(_url_ver_factura(id_factura, return_to_post, procesar=1))
 
         seleccionados = request.form.getlist('seleccionados')
         template_id = request.form.get("template_id")
@@ -801,7 +889,7 @@ def ver_factura(id_factura):
         if not seleccionados:
             flash("Selecciona al menos un artículo para inventariar", "warning")
             return redirect(
-                url_for('facturas.ver_factura', id_factura=id_factura)
+                _url_ver_factura(id_factura, return_to_post)
             )
 
         ids = [a_entero(x, 0) for x in seleccionados]
@@ -1057,7 +1145,7 @@ def ver_factura(id_factura):
                         f"impresión: {e_imp}",
                         "warning",
                     )
-                    return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
+                    return redirect(_url_ver_factura(id_factura, return_to_post))
 
             if procesados > 0:
                 flash(f"Inventariados: {procesados}. Omitidos/bloqueados: {omitidos + bloqueados}", "success")
@@ -1068,10 +1156,10 @@ def ver_factura(id_factura):
 
         except Exception as e:
             flash(f"Error al inventariar: {e}", "danger")
-            return redirect(url_for('facturas.ver_factura', id_factura=id_factura))
+            return redirect(_url_ver_factura(id_factura, return_to_post))
 
         return redirect(
-            url_for('facturas.ver_factura', id_factura=id_factura)
+            _url_ver_factura(id_factura, return_to_post)
         )
 
     # ===============================
@@ -1129,6 +1217,24 @@ def ver_factura(id_factura):
         """, (id_factura,))
         factura_items = cursor.fetchall()
 
+        # Línea resaltada al llegar desde la búsqueda de artículos. Se valida
+        # contra la factura abierta: una línea ajena se ignora.
+        linea_destacada = None
+        linea_solicitada = request.args.get('linea')
+        if linea_solicitada:
+            try:
+                linea_id = int(linea_solicitada)
+            except (TypeError, ValueError):
+                linea_id = None
+            if linea_id is not None:
+                cursor.execute(
+                    "SELECT 1 FROM inventarioFacturas "
+                    "WHERE id = ? AND id_factura = ?",
+                    (linea_id, id_factura),
+                )
+                if cursor.fetchone():
+                    linea_destacada = linea_id
+
         prov_info_get = None
         if factura and factura[0]:
             try:
@@ -1182,7 +1288,9 @@ def ver_factura(id_factura):
         estados_linea=estados,
         factura_consolidado=factura_consolidado,
         articulos_pendientes=articulos_pendientes,
-        mostrar_consolidado=mostrar_consolidado
+        mostrar_consolidado=mostrar_consolidado,
+        linea_destacada=linea_destacada,
+        return_to=return_to_post,
     )
 
 @facturas_bp.route('/pdf/<filename>')

@@ -1,0 +1,213 @@
+{% extends "layouts/base.html" %}
+
+{% from "includes/page_header.html" import encabezado_pagina %}
+{% from "includes/iconos.html" import icono %}
+
+{% block title %}Buscar artículos en facturas{% endblock %}
+
+{% block content %}
+{% call encabezado_pagina(
+    'Buscar artículos en facturas',
+    'Localiza un artículo físico en todas las facturas, identifica en qué factura llegó y abre su detalle para consolidarlo o inventariarlo.',
+    'buscar',
+    [('Inicio', url_for('index')), ('Facturas', url_for('facturas.facturas')), ('Buscar artículos', None)]
+) %}
+    <a href="{{ url_for('facturas.facturas') }}" class="btn btn-outline-secondary btn-sm">
+        {{ icono('volver') }} Volver a facturas
+    </a>
+{% endcall %}
+
+<div class="card card-body border-0 shadow mb-4">
+    <form method="get" action="{{ url_for('facturas.buscar_articulos') }}" id="formBuscarArticulos">
+        <div class="row g-3">
+            <div class="col-12 col-md-4 col-xl-2">
+                <label for="referencia" class="form-label">Referencia</label>
+                <input type="search" class="form-control" id="referencia" name="referencia"
+                       value="{{ filtros.referencia }}" placeholder="Exacta o parcial" autocomplete="off">
+            </div>
+            <div class="col-12 col-md-8 col-xl-3">
+                <label for="descripcion" class="form-label">Descripción del artículo</label>
+                <input type="search" class="form-control" id="descripcion" name="descripcion"
+                       value="{{ filtros.descripcion }}" placeholder="Ej. bomba clutch" autocomplete="off">
+            </div>
+            <div class="col-12 col-md-6 col-xl-2">
+                <label for="proveedor" class="form-label">Proveedor</label>
+                <input type="search" class="form-control" id="proveedor" name="proveedor"
+                       value="{{ filtros.proveedor }}" placeholder="Nombre o siglas" autocomplete="off">
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label for="id_factura" class="form-label">ID / número de factura</label>
+                <input type="search" class="form-control" id="id_factura" name="id_factura"
+                       value="{{ filtros.id_factura }}" placeholder="Ej. 2FE123" autocomplete="off">
+            </div>
+            <div class="col-6 col-md-3 col-xl-1">
+                <label for="fecha_desde" class="form-label">Desde</label>
+                <input type="date" class="form-control" id="fecha_desde" name="fecha_desde"
+                       value="{{ filtros.fecha_desde }}">
+            </div>
+            <div class="col-6 col-md-3 col-xl-1">
+                <label for="fecha_hasta" class="form-label">Hasta</label>
+                <input type="date" class="form-control" id="fecha_hasta" name="fecha_hasta"
+                       value="{{ filtros.fecha_hasta }}">
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+                <label for="estado" class="form-label">Estado</label>
+                <select class="form-select" id="estado" name="estado">
+                    {% for clave, etiqueta in estados.items() %}
+                        <option value="{{ clave }}" {% if filtros.estado == clave %}selected{% endif %}>{{ etiqueta }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-xl-3 d-flex align-items-end gap-2">
+                <button type="submit" class="btn btn-primary flex-fill">
+                    {{ icono('buscar') }} Buscar
+                </button>
+                <a href="{{ url_for('facturas.buscar_articulos') }}" class="btn btn-secondary flex-fill">
+                    {{ icono('limpiar') }} Limpiar
+                </a>
+            </div>
+        </div>
+        <p class="text-muted small mb-0 mt-2">
+            La descripción ignora tildes, mayúsculas, signos y espacios repetidos. Puedes combinar palabras en cualquier orden.
+        </p>
+    </form>
+</div>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div class="fw-semibold">
+        {{ resultado.total }} coincidencia{{ '' if resultado.total == 1 else 's' }}
+        {% if resultado.total %}
+            <span class="text-muted fw-normal small">
+                (mostrando {{ resultado.desde }}–{{ resultado.hasta }})
+            </span>
+        {% endif %}
+    </div>
+    <div class="small text-muted">50 resultados por página</div>
+</div>
+
+{% if resultado.filas %}
+<div class="card border-0 shadow tabla-scroll tabla-scroll-alta">
+    <table class="table table-hover align-middle mb-0 tabla-buscar-articulos">
+        <thead class="table-light">
+            <tr>
+                <th>Fecha</th>
+                <th>Factura</th>
+                <th>Proveedor</th>
+                <th>Ref. original</th>
+                <th>Ref. corregida</th>
+                <th class="col-descripcion-ancha">Descripción original</th>
+                <th class="col-descripcion-ancha">Descripción estandarizada</th>
+                <th class="text-center">Cantidad</th>
+                <th class="text-end">Valor unitario</th>
+                <th>Estado consolidación</th>
+                <th>Estado inventariado</th>
+                <th>Código de barras</th>
+                <th>Acción</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fila in resultado.filas %}
+            <tr>
+                <td class="text-nowrap">{{ fila.fecha or '' }}</td>
+                <td class="text-nowrap fw-semibold">{{ fila.id_factura }}</td>
+                <td>{{ fila.proveedor or '' }}</td>
+                <td class="text-nowrap">{{ fila.referencia_original_mostrar }}</td>
+                <td class="text-nowrap">
+                    {% if fila.referencia_corregida_mostrar %}
+                        {{ fila.referencia_corregida_mostrar }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="col-descripcion-ancha">{{ fila.descripcion_original_mostrar }}</td>
+                <td class="col-descripcion-ancha">
+                    {% if fila.descripcion_estandarizada_mostrar %}
+                        {{ fila.descripcion_estandarizada_mostrar }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ fila.cantidad if fila.cantidad is not none else '' }}</td>
+                <td class="text-end text-nowrap">
+                    $ {{ "{:,.0f}".format(fila.valor_unitario or 0).replace(",", ".") }}
+                </td>
+                <td>
+                    <span class="badge bg-{{ fila.estado_consolidado_badge }}">{{ fila.estado_consolidado_label }}</span>
+                    {% if fila.consolidado_estado %}
+                        <span class="d-block small text-muted mt-1">{{ fila.consolidado_estado }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge bg-{{ fila.estado_inventario_badge }}">{{ fila.estado_inventario_label }}</span>
+                </td>
+                <td class="text-nowrap">
+                    {% if fila.codigoBarras %}
+                        {{ fila.codigoBarras }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="text-nowrap">
+                    <a class="btn btn-sm btn-primary"
+                       href="{{ url_for('facturas.ver_factura', id_factura=fila.id_factura, linea=fila.id_linea, return_to=return_to_actual) }}#item-{{ fila.id_linea }}">
+                        {{ icono('recibo') }} Ver factura
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if resultado.total_paginas > 1 %}
+<div class="d-flex flex-column flex-lg-row align-items-center justify-content-between mt-3 gap-2">
+    <nav aria-label="Paginación de resultados">
+        <ul class="pagination mb-0">
+            <li class="page-item {{ 'disabled' if resultado.pagina <= 1 else '' }}">
+                <a class="page-link"
+                   href="{{ url_for('facturas.buscar_articulos', pagina=resultado.pagina - 1, **parametros) }}">Anterior</a>
+            </li>
+            {% set inicio = [1, resultado.pagina - 2] | max %}
+            {% set fin = [resultado.total_paginas, resultado.pagina + 2] | min %}
+            {% if inicio > 1 %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('facturas.buscar_articulos', pagina=1, **parametros) }}">1</a>
+                </li>
+                {% if inicio > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+            {% endif %}
+            {% for numero in range(inicio, fin + 1) %}
+                <li class="page-item {{ 'active' if numero == resultado.pagina else '' }}">
+                    <a class="page-link" href="{{ url_for('facturas.buscar_articulos', pagina=numero, **parametros) }}">{{ numero }}</a>
+                </li>
+            {% endfor %}
+            {% if fin < resultado.total_paginas %}
+                {% if fin < resultado.total_paginas - 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('facturas.buscar_articulos', pagina=resultado.total_paginas, **parametros) }}">{{ resultado.total_paginas }}</a>
+                </li>
+            {% endif %}
+            <li class="page-item {{ 'disabled' if resultado.pagina >= resultado.total_paginas else '' }}">
+                <a class="page-link"
+                   href="{{ url_for('facturas.buscar_articulos', pagina=resultado.pagina + 1, **parametros) }}">Siguiente</a>
+            </li>
+        </ul>
+    </nav>
+    <div class="small text-muted">
+        Página {{ resultado.pagina }} de {{ resultado.total_paginas }} · {{ resultado.total }} registros
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="card card-body border-0 shadow text-center py-5">
+    <div class="mb-2">{{ icono('buscar', 'fs-3 text-muted') }}</div>
+    <h2 class="h5">No se encontraron artículos</h2>
+    <p class="text-muted mb-2">Sugerencias para ampliar la búsqueda:</p>
+    <ul class="list-unstyled text-muted small mb-0">
+        <li>Usa menos palabras en la descripción.</li>
+        <li>Borra la referencia o prueba sólo una parte de ella.</li>
+        <li>Amplía el rango de fechas o cambia el estado a “Todos”.</li>
+    </ul>
+</div>
+{% endif %}
+{% endblock %}

@@ -115,6 +115,19 @@ def conectar(ruta=None):
         # Bases en memoria o de solo lectura: se mantienen operativas.
         pass
 
+    # Función de normalización (tildes, signos, espacios) para búsquedas.
+    try:
+        from utilidades import normalizar_clave
+
+        conn.create_function(
+            "normalizar",
+            1,
+            lambda valor: normalizar_clave(valor) or "",
+            deterministic=True,
+        )
+    except Exception:
+        pass
+
     return conn
 
 

@@ -16,6 +16,12 @@
         [('Inicio', url_for('index')), ('Facturas', None)]
     ) }}
 
+    <div class="mb-3">
+        <a href="{{ url_for('facturas.buscar_articulos') }}" class="btn btn-primary">
+            {{ icono('buscar') }} Buscar artículos
+        </a>
+    </div>
+
     <div class="card card-body border-0 shadow mb-4">
         <h2 class="h5 mb-3 d-flex align-items-center gap-2">
             {{ icono('pdf') }} Descargar facturas del correo

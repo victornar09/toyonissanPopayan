@@ -240,7 +240,16 @@ def guardia_login():
     ):
         return jsonify({"ok": False, "error": "No autenticado"}), 401
 
-    return redirect(url_for("auth.login", next=request.path))
+    try:
+        destino = url_for("auth.login", next=request.path)
+    except Exception:
+        # Aplicaciones mínimas (pruebas o integraciones) pueden no registrar
+        # el blueprint de autenticación; se usa la ruta convencional.
+        from urllib.parse import quote
+
+        destino = "/login?next=" + quote(request.path)
+
+    return redirect(destino)
 
 
 # ---------------------------------------------------------------------------

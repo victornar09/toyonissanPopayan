@@ -19,6 +19,11 @@
     <a href="{{ url_for('facturas.facturas') }}" class="btn btn-outline-secondary btn-sm">
         {{ icono('volver') }} Volver a facturas
     </a>
+    {% if return_to %}
+        <a href="{{ return_to }}" class="btn btn-outline-primary btn-sm">
+            {{ icono('volver') }} Volver a resultados
+        </a>
+    {% endif %}
 {% endcall %}
 
 {% with mensajes = get_flashed_messages(with_categories=true) %}
@@ -167,7 +172,7 @@
                                 {% set valor_iva = valor_unitario * 1.19 %}
                                 {% set valor_publico_sugerido = ((valor_unitario * 1.19) * 1.5) | round(-3) %}
 
-                                <tr class="{% if codigo_estado == 'INVENTARIADO' %}item-inventariado{% endif %}">
+                                <tr id="item-{{ item_id }}" class="{% if codigo_estado == 'INVENTARIADO' %}item-inventariado{% endif %}{% if linea_destacada and item_id == linea_destacada %} fila-destacada{% endif %}">
                                     <td class="celda-check">
                                         <input
                                             type="checkbox"
@@ -241,6 +246,9 @@
                 </div>
 
                 <input type="hidden" name="template_id" id="template_id">
+                {% if return_to %}
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                {% endif %}
             </form>
 
             <!-- MODAL SELECCIÓN ETIQUETA -->
@@ -534,6 +542,9 @@
         {% if pendientes_list|length > 0 %}
         <form method="POST" action="{{ url_for('facturas.ver_factura', id_factura=id_factura) }}" id="formProcesarPendientes">
             <input type="hidden" name="accion_extra" value="procesar_consolidado">
+            {% if return_to %}
+                <input type="hidden" name="return_to" value="{{ return_to }}">
+            {% endif %}
             <div class="table-responsive tabla-scroll">
                 <table class="table table-hover align-middle mb-0 tabla-pendientes">
                     <thead class="table-light">
@@ -659,5 +670,26 @@
 </div>
 
 </div>
+
+{% if linea_destacada %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const fila = document.getElementById('item-{{ linea_destacada }}');
+    if (!fila) return;
+
+    if (window.location.hash !== '#item-{{ linea_destacada }}') {
+        try {
+            history.replaceState(null, '', '#item-{{ linea_destacada }}');
+        } catch (e) {}
+    }
+
+    try {
+        fila.scrollIntoView({behavior: 'smooth', block: 'center'});
+    } catch (e) {
+        fila.scrollIntoView();
+    }
+});
+</script>
+{% endif %}
 
 {% endblock content %}
