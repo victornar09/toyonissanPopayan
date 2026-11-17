@@ -265,6 +265,35 @@ archivo temporal, estado, error e intentos.
 La cola se consulta en `GET /impresion/` y el estado individual en
 `GET /impresion/<id>`. Las acciones requieren sesión y token CSRF.
 
+### 7.1. Impresión diferida desde Facturas
+
+- Al inventariar se puede elegir **Inventariar seleccionados** (sin imprimir)
+  o **Inventariar e imprimir**.
+- La tarjeta **Imprimir etiquetas de artículos inventariados** del detalle de
+  factura permite reimprimir después mediante
+  `POST /facturas/imprimir-etiquetas`.
+- La descripción usada es siempre
+  `consolidado.descripcionEstandarizada`; si faltara, se usa
+  `inventarioUnico.descripcionEstandarizada` y, por último,
+  `inventarioUnico.descripcion`.
+- Si la plantilla no existe o falla la cola, el inventariado no se revierte.
+
+### 7.2. Alineación de descripciones históricas
+
+Antes de desplegar esta versión se recomienda ejecutar la simulación:
+
+```bash
+python -m consolidado.alinear_descripciones
+python -m consolidado.alinear_descripciones --aplicar
+```
+
+La rutina sólo toca artículos vinculados a Consolidado con descripción estándar
+no vacía. Omite colisiones del índice único `idx_inventario_clave` y registros
+cuyas descripciones estándar estén en conflicto.
+
+Mantenga `TOYONISSAN_SECRET_KEY` definida de forma estable en el entorno del
+servidor para que las sesiones no se invaliden al reiniciar.
+
 ---
 
 ## 8. Seguridad

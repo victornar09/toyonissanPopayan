@@ -897,6 +897,7 @@ def ver_factura(id_factura):
         items_para_imprimir = []
         ruta_template = None
         plantilla_nombre = None
+        advertencia_impresion = None
         procesados = 0
         omitidos = 0
         bloqueados = 0
@@ -952,9 +953,6 @@ def ver_factura(id_factura):
                     referencia_form = (
                         request.form.get(f'referencia_{id_fact_item}', '') or ''
                     ).strip()
-                    descripcion_form = (
-                        request.form.get(f'descripcion_{id_fact_item}', '') or ''
-                    ).strip()
 
                     referencia_use = (
                         referencia_form
@@ -985,19 +983,17 @@ def ver_factura(id_factura):
                         continue
 
                     datos_est = estado.get('datos_estandarizados') or {}
-                    descripcion_est = (
-                        datos_est.get('descripcion')
-                        or datos_est.get('descripcionEstandarizada')
-                        or descripcion_orig
-                    )
 
-                    # Edición manual de la descripción: sólo se usa cuando
-                    # difiere de la descripción original de la factura.
-                    if (
-                        descripcion_form
-                        and descripcion_form != (descripcion_orig or '').strip()
-                    ):
-                        descripcion_est = descripcion_form
+                    # Fuente única de descripción: Consolidado. Se ignora
+                    # cualquier descripción enviada por el navegador.
+                    descripcion_est = (
+                        datos_est.get('descripcionEstandarizada')
+                        or datos_est.get('descripcion')
+                        or ''
+                    ).strip()
+                    if not descripcion_est:
+                        bloqueados += 1
+                        continue
 
                     valor_publico = request.form.get(
                         f'valor_publico_{id_fact_item}', ''
@@ -1075,19 +1071,25 @@ def ver_factura(id_factura):
                     ids_para_imprimir.append(inventario_id)
                     procesados += 1
 
-                # Datos para impresión
+                # Datos para impresión (opcional). Se puede inventariar sin
+                # imprimir y usar después la impresión diferida del detalle.
                 if ids_para_imprimir and template_id:
                     placeholders_imp = ",".join("?" * len(ids_para_imprimir))
 
                     cursor.execute(f"""
                         SELECT
                             iU.codigoBarras,
-                            iU.descripcion,
+                            COALESCE(
+                                NULLIF(c.descripcionEstandarizada, ''),
+                                NULLIF(iU.descripcionEstandarizada, ''),
+                                iU.descripcion
+                            ) AS descripcion,
                             iU.precioVentaCifrado,
                             iF.cantidad,
                             PR.siglas
                         FROM inventarioFacturas iF
                         JOIN inventarioUnico iU ON iF.id_inventarioUnico = iU.id
+                        LEFT JOIN consolidado c ON c.id = iF.id_consolidado
                         LEFT JOIN proveedor PR
                             ON PR.nombreProveedor = iU.proveedor
                             OR PR.nombreProveedorSecundario = iU.proveedor
@@ -1103,13 +1105,16 @@ def ver_factura(id_factura):
                     """, (template_id,))
                     row_tpl = cursor.fetchone()
 
-                    if not row_tpl:
-                        raise Exception("Template BarTender no encontrado")
-
-                    plantilla_nombre = row_tpl[0]
-                    ruta_template = row_tpl[1]
-                elif ids_para_imprimir and not template_id:
-                    raise Exception("Debe seleccionar una etiqueta BarTender")
+                    if row_tpl:
+                        plantilla_nombre = row_tpl[0]
+                        ruta_template = row_tpl[1]
+                    else:
+                        # El inventariado ya es válido; sólo se advierte que la
+                        # plantilla elegida no existe.
+                        advertencia_impresion = (
+                            "El inventariado se guardó, pero la etiqueta BarTender "
+                            "seleccionada no existe. Puede imprimirla después."
+                        )
 
             respaldo.actualizar_respaldo_si_posible(ruta_db=ruta_db)
 
@@ -1146,6 +1151,9 @@ def ver_factura(id_factura):
                         "warning",
                     )
                     return redirect(_url_ver_factura(id_factura, return_to_post))
+
+            if advertencia_impresion:
+                flash(advertencia_impresion, "warning")
 
             if procesados > 0:
                 flash(f"Inventariados: {procesados}. Omitidos/bloqueados: {omitidos + bloqueados}", "success")
@@ -1277,6 +1285,37 @@ def ver_factura(id_factura):
         except Exception:
             estados = {}
 
+        # Líneas ya inventariadas para impresión/reimpresión diferida. La
+        # descripción mostrada y usada al imprimir es la estándar de Consolidado.
+        cursor.execute("""
+            SELECT
+                iF.id,
+                iF.referencia,
+                iF.cantidad,
+                COALESCE(
+                    NULLIF(c.descripcionEstandarizada, ''),
+                    NULLIF(iU.descripcionEstandarizada, ''),
+                    iU.descripcion
+                ) AS descripcion,
+                iU.codigoBarras
+            FROM inventarioFacturas iF
+            LEFT JOIN inventarioUnico iU ON iF.id_inventarioUnico = iU.id
+            LEFT JOIN consolidado c ON c.id = iF.id_consolidado
+            WHERE iF.id_factura = ?
+              AND (iF.inventariado = 1 OR iF.id_inventarioUnico IS NOT NULL)
+            ORDER BY iF.id
+        """, (id_factura,))
+        lineas_inventariadas = [
+            {
+                "id": fila[0],
+                "referencia": fila[1] or "",
+                "cantidad": fila[2] or 0,
+                "descripcion": fila[3] or "",
+                "codigo": fila[4] or "",
+            }
+            for fila in cursor.fetchall()
+        ]
+
         mostrar_consolidado = request.args.get('procesar') == '1' or request.args.get('consolidar') == '1'
 
     return render_template(
@@ -1286,12 +1325,150 @@ def ver_factura(id_factura):
         items_factura=factura_items,
         bartender_templates=bartender_templates,
         estados_linea=estados,
+        lineas_inventariadas=lineas_inventariadas,
         factura_consolidado=factura_consolidado,
         articulos_pendientes=articulos_pendientes,
         mostrar_consolidado=mostrar_consolidado,
         linea_destacada=linea_destacada,
         return_to=return_to_post,
     )
+
+@facturas_bp.route('/imprimir-etiquetas', methods=['POST'])
+def imprimir_etiquetas():
+    """Imprime o reimprime etiquetas de líneas ya inventariadas.
+
+    Usa siempre la descripción estándar de Consolidado cuando existe. No
+    modifica inventario ni cantidades: sólo encola la impresión.
+    """
+
+    ruta_db = db.ruta_bd_activa()
+    if not ruta_db:
+        return "No hay base de datos creada", 404
+
+    id_factura = (request.form.get('id_factura') or '').strip()
+    return_to = (
+        return_to_seguro(request.form.get('return_to'))
+        or return_to_seguro(session.get('facturas_return_to'))
+    )
+
+    if not id_factura:
+        flash("Factura no válida.", "danger")
+        return redirect(url_for('facturas.facturas'))
+
+    def _volver():
+        return redirect(_url_ver_factura(id_factura, return_to))
+
+    template_id = request.form.get('template_id')
+    lineas = [a_entero(x, 0) for x in request.form.getlist('lineas')]
+    lineas = [x for x in lineas if x]
+
+    if not lineas:
+        flash("Selecciona al menos un artículo inventariado.", "warning")
+        return _volver()
+    if not template_id:
+        flash("Selecciona una etiqueta BarTender.", "warning")
+        return _volver()
+
+    try:
+        with db.conexion(ruta_db) as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" * len(lineas))
+
+            cursor.execute(f"""
+                SELECT
+                    iF.id,
+                    iU.codigoBarras,
+                    COALESCE(
+                        NULLIF(c.descripcionEstandarizada, ''),
+                        NULLIF(iU.descripcionEstandarizada, ''),
+                        iU.descripcion
+                    ) AS descripcion,
+                    iU.precioVentaCifrado,
+                    iF.cantidad,
+                    PR.siglas
+                FROM inventarioFacturas iF
+                LEFT JOIN inventarioUnico iU ON iF.id_inventarioUnico = iU.id
+                LEFT JOIN consolidado c ON c.id = iF.id_consolidado
+                LEFT JOIN proveedor PR
+                    ON PR.nombreProveedor = iU.proveedor
+                    OR PR.nombreProveedorSecundario = iU.proveedor
+                WHERE iF.id_factura = ?
+                  AND iF.id IN ({placeholders})
+                  AND (iF.inventariado = 1 OR iF.id_inventarioUnico IS NOT NULL)
+            """, (id_factura, *lineas))
+            filas = cursor.fetchall()
+
+            cursor.execute(
+                "SELECT name, ubicacion FROM bartenderFiles "
+                "WHERE idBartenderFiles = ?",
+                (template_id,),
+            )
+            fila_tpl = cursor.fetchone()
+    except Exception as error:
+        flash(f"No se pudieron preparar las etiquetas: {error}", "danger")
+        return _volver()
+
+    if not fila_tpl:
+        flash("La etiqueta BarTender seleccionada no existe.", "danger")
+        return _volver()
+
+    articulos = []
+    sin_codigo = 0
+    for fila in filas:
+        codigo = fila[1]
+        if not codigo:
+            sin_codigo += 1
+            continue
+        articulos.append({
+            "codigo": codigo,
+            "descripcion": fila[2] or '',
+            "precio": fila[3],
+            "cantidad": fila[4] or 1,
+            "proveedor": fila[5],
+        })
+
+    if not articulos:
+        flash(
+            "No hay artículos inventariados con código de barras para imprimir.",
+            "warning",
+        )
+        return _volver()
+
+    try:
+        trabajo = impresion_servicio.crear_trabajo(
+            ruta_db,
+            usuario=session.get('usuario'),
+            articulos=articulos,
+            id_plantilla=template_id,
+            plantilla=fila_tpl[0],
+            ruta_plantilla=fila_tpl[1],
+            origen='facturas',
+            columna_inicio=1,
+            clave_unica=request.form.get('clave_idempotencia'),
+        )
+    except Exception as error:
+        flash(f"No se pudo encolar la impresión: {error}", "danger")
+        return _volver()
+
+    if trabajo.get('duplicado'):
+        flash(
+            "La impresión ya estaba en la cola "
+            f"(trabajo #{trabajo.get('idTrabajo')}).",
+            "info",
+        )
+    else:
+        flash(
+            "Impresión encolada en el servidor "
+            f"(trabajo #{trabajo.get('idTrabajo')}).",
+            "success",
+        )
+    if sin_codigo:
+        flash(
+            f"{sin_codigo} artículo(s) sin código de barras no se imprimieron.",
+            "warning",
+        )
+    return _volver()
+
 
 @facturas_bp.route('/pdf/<filename>')
 def ver_pdf(filename):

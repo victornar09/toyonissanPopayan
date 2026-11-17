@@ -648,29 +648,160 @@ def configuracion():
                 except Exception as e:
                     mensaje = f"Error al registrar ubicación: {e}"
 
-        elif accion == 'guardar_proveedor':
-            nombre_proveedor = request.form.get('nombre_proveedor')
-            nombre_proveedor_2 = request.form.get('nombre_proveedor_2')
-            sigla = request.form.get('sigla')
-            correo_facturas = request.form.get('correo_facturas')
-            prefijo = request.form.get('prefijo')
-            nit = request.form.get('nit')
-            ciudad = request.form.get('ciudad')
-            telefono = request.form.get('telefono')
+        elif accion in ('guardar_proveedor', 'actualizar_proveedor'):
+            nombre_proveedor = (request.form.get('nombre_proveedor') or '').strip()
+            nombre_proveedor_2 = (
+                request.form.get('nombre_proveedor_2') or ''
+            ).strip()
+            sigla = (request.form.get('sigla') or '').strip().upper()
+            correo_facturas = (request.form.get('correo_facturas') or '').strip()
+            prefijo = (request.form.get('prefijo') or '').strip()
+            nit = (request.form.get('nit') or '').strip()
+            ciudad = (request.form.get('ciudad') or '').strip()
+            telefono = (request.form.get('telefono') or '').strip()
+            id_proveedor_form = (request.form.get('idProveedor') or '').strip()
 
-            if ruta_db and nombre_proveedor and sigla and correo_facturas and prefijo and nit:
+            es_edicion = accion == 'actualizar_proveedor' or bool(id_proveedor_form)
+            faltantes = [
+                etiqueta
+                for valor, etiqueta in (
+                    (nombre_proveedor, 'Nombre 1'),
+                    (sigla, 'Siglas'),
+                    (correo_facturas, 'Correo de facturas'),
+                    (prefijo, 'Prefijo'),
+                    (nit, 'NIT'),
+                )
+                if not valor
+            ]
+
+            if not ruta_db:
+                mensaje = "Primero debe crear o activar una base de datos."
+            elif faltantes:
+                mensaje = (
+                    "Complete los campos obligatorios: "
+                    + ", ".join(faltantes)
+                    + "."
+                )
+            else:
+                conn = None
                 try:
+                    id_proveedor = None
+                    if id_proveedor_form:
+                        try:
+                            id_proveedor = int(id_proveedor_form)
+                        except (TypeError, ValueError):
+                            raise ValueError(
+                                "El identificador del proveedor no es válido."
+                            )
+                    if es_edicion and not id_proveedor:
+                        raise ValueError(
+                            "Debe identificar el proveedor que desea actualizar."
+                        )
+
                     conn = db.conectar(ruta_db)
                     cursor = conn.cursor()
-                    cursor.execute("""          
-                        INSERT INTO proveedor (nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-                    """, (nombre_proveedor, nombre_proveedor_2, sigla, correo_facturas, prefijo, nit, ciudad, telefono))
+
+                    if es_edicion:
+                        cursor.execute(
+                            "SELECT siglas FROM proveedor WHERE idProveedor = ?",
+                            (id_proveedor,),
+                        )
+                        actual = cursor.fetchone()
+                        if not actual:
+                            raise ValueError(
+                                "El proveedor seleccionado ya no existe."
+                            )
+                        sigla_actual = (actual[0] or '').strip().upper()
+                    else:
+                        sigla_actual = None
+
+                    # Sólo se valida duplicado cuando la sigla cambia (o al
+                    # crear). Así se puede corregir otros datos sin quedar
+                    # bloqueado por duplicados históricos.
+                    if not es_edicion or sigla != sigla_actual:
+                        cursor.execute(
+                            """
+                            SELECT idProveedor, nombreProveedor
+                            FROM proveedor
+                            WHERE UPPER(TRIM(siglas)) = ?
+                              AND (? IS NULL OR idProveedor <> ?)
+                            """,
+                            (sigla, id_proveedor, id_proveedor),
+                        )
+                        duplicado = cursor.fetchone()
+                        if duplicado:
+                            raise ValueError(
+                                "La sigla "
+                                f"'{sigla}' ya está asignada al proveedor "
+                                f"'{duplicado[1]}' (ID {duplicado[0]}). "
+                                "Use una sigla diferente."
+                            )
+
+                    if es_edicion:
+                        cursor.execute(
+                            """
+                            UPDATE proveedor
+                            SET nombreProveedor = ?,
+                                nombreProveedorSecundario = ?,
+                                siglas = ?,
+                                correoFacturas = ?,
+                                prefijo = ?,
+                                nit = ?,
+                                ciudad = ?,
+                                telefono = ?
+                            WHERE idProveedor = ?
+                            """,
+                            (
+                                nombre_proveedor,
+                                nombre_proveedor_2 or None,
+                                sigla,
+                                correo_facturas,
+                                prefijo,
+                                nit,
+                                ciudad or None,
+                                telefono or None,
+                                id_proveedor,
+                            ),
+                        )
+                        if cursor.rowcount == 0:
+                            raise ValueError(
+                                "No se encontró el proveedor a actualizar."
+                            )
+                        mensaje = "Proveedor actualizado correctamente."
+                    else:
+                        cursor.execute(
+                            """
+                            INSERT INTO proveedor (
+                                nombreProveedor, nombreProveedorSecundario,
+                                siglas, correoFacturas, prefijo, nit, ciudad,
+                                telefono
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                nombre_proveedor,
+                                nombre_proveedor_2 or None,
+                                sigla,
+                                correo_facturas,
+                                prefijo,
+                                nit,
+                                ciudad or None,
+                                telefono or None,
+                            ),
+                        )
+                        mensaje = "Proveedor registrado correctamente."
+
                     conn.commit()
-                    conn.close()
-                    mensaje = "Proveedor registrado correctamente."
+                except ValueError as e:
+                    mensaje = str(e)
                 except Exception as e:
-                    mensaje = f"Error al registrar proveedor: {e}"
+                    mensaje = (
+                        "Error al guardar el proveedor: "
+                        f"{e}"
+                    )
+                finally:
+                    if conn is not None:
+                        conn.close()
 
         elif accion == "actualizar_consolidado":
 
@@ -762,7 +893,10 @@ def configuracion():
             conn = db.conectar(ruta_db)
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT nombreProveedor, nombreProveedorSecundario, siglas, correoFacturas, prefijo, nit, ciudad, telefono FROM proveedor
+                SELECT idProveedor, nombreProveedor, nombreProveedorSecundario,
+                       siglas, correoFacturas, prefijo, nit, ciudad, telefono
+                FROM proveedor
+                ORDER BY nombreProveedor
             """)
             proveedores = cursor.fetchall()
             conn.close()

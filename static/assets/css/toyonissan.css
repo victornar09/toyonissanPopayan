@@ -232,6 +232,12 @@
     resize: vertical;
 }
 
+.descripcion-estandar {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: .875rem;
+}
+
 .table-responsive {
     -webkit-overflow-scrolling: touch;
 }

@@ -118,6 +118,7 @@ toyonissanPopayan/
 - Crear/activar base de datos SQLite (se crea desde `database/estructura.sql` y se aplican migraciones con `migraciones.migrar()`).
 - Guardar configuración (correo de revisión, token/app password, correos varios).
 - Registrar proveedores, ubicaciones, templates de BarTender.
+- En proveedores se puede buscar por nombre, NIT o sigla y editar un registro existente. Las siglas se guardan en mayúsculas y no pueden duplicarse al crear o cambiarlas.
 
 ### 2. Descargar facturas desde correo
 Ruta: `/facturas/` (POST)
@@ -133,13 +134,29 @@ Ruta: `/facturas/` (POST)
 ### 3. Inventariar (factura → inventario)
 Ruta: `/facturas/ver/<id_factura>` (POST al seleccionar líneas)
 1. Selecciona líneas a inventariar desde `inventarioFacturas` (no inventariadas o según selección).
-2. Para cada línea se puede editar descripción/referencia/valor público antes de guardar.
+2. La **descripción no es editable**: siempre proviene de `consolidado.descripcionEstandarizada`. La referencia sí puede corregirse y se revalida contra Consolidado.
 3. Calcula: `precio_venta` (entero), `precio_cifrado` con `cifrar_precio()`, `precio_max_desc = precio_venta * 0.9` redondeado.
-4. Genera `descripcionClave = normalizar_clave(descripcion)`.
-5. Inserta/actualiza en `inventarioUnico` con `ON CONFLICT(descripcionClave) DO UPDATE`: suma cantidad, actualiza precio/proveedor/fecha/grupo, mantiene referencia.
-6. Marca `inventarioFacturas.inventariado = 1` y relaciona `id_inventarioUnico`.
-7. Recolecta items a imprimir (con código de barras, descripción cifrada, cantidad, sigla proveedor) y encola el trabajo con `impresion_servicio.crear_trabajo()` con la plantilla BarTender seleccionada; el worker genera un CSV único por trabajo, actualiza `productos_temp.csv` (el archivo enlazado a las plantillas) y manda a imprimir con COM.
-8. Redirige al detalle.
+4. Genera `descripcionClave = normalizar_clave(descripcionEstandarizada)`.
+5. Inserta/actualiza en `inventarioUnico` mediante `consolidado.servicio_inventario.obtener_o_crear_articulo`: si el artículo existe, sincroniza `descripcion` y `descripcionEstandarizada` con la estándar, completa los demás campos vacíos y suma cantidad.
+6. Marca `inventarioFacturas.inventariado = 1` y relaciona `id_inventarioUnico` e `id_consolidado`.
+7. La impresión es opcional:
+   - **Inventariar seleccionados**: guarda sin imprimir.
+   - **Inventariar e imprimir**: encola con la plantilla BarTender elegida y la descripción estándar de Consolidado.
+8. Si la plantilla falla o no existe, el inventariado se conserva y se puede imprimir después.
+9. Redirige al detalle.
+
+### 3.1. Imprimir etiquetas después
+En el detalle de factura, la tarjeta **Imprimir etiquetas de artículos inventariados** permite seleccionar líneas ya inventariadas y una plantilla BarTender. La ruta `POST /facturas/imprimir-etiquetas` resuelve `inventarioFacturas → inventarioUnico → consolidado` y usa la misma descripción estándar. Si una línea no tiene código de barras se informa y se omite.
+
+### 3.2. Alinear descripciones históricas
+Rutina segura (simula por defecto):
+
+```bash
+python -m consolidado.alinear_descripciones
+python -m consolidado.alinear_descripciones --aplicar
+```
+
+Sólo actualiza artículos vinculados a Consolidado con `descripcionEstandarizada` no vacía. Omite colisiones de `descripcionClave` y registros con descripciones estándar en conflicto.
 
 ### 4. Estandarizar y actualizar consolidado maestro
 Hay dos caminos:

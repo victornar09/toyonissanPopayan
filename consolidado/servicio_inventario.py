@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from datetime import date
 
+from utilidades import normalizar_clave
+
 
 def _texto(valor):
     if valor is None:
@@ -64,8 +66,10 @@ def obtener_o_crear_articulo(
 
     ``datos_operativos`` contiene la información del Consolidado que debe
     quedar persistida en Inventario (referencias, marcas, modelo, lado,
-    medida y descripción estandarizada). En un artículo existente sólo se
-    completan campos vacíos: nunca se sobrescribe un dato válido.
+    medida y descripción estandarizada). La descripción estandarizada es la
+    fuente única: al crear o reutilizar un artículo se sincronizan
+    ``descripcion`` y ``descripcionEstandarizada`` con ese valor. El resto de
+    campos operativos sólo se completan cuando están vacíos.
 
     Devuelve ``dict`` con ``id``, ``codigoBarras`` y ``reutilizado``.
     No imprime etiquetas: la impresión se maneja fuera de la transacción.
@@ -80,6 +84,11 @@ def obtener_o_crear_articulo(
     if not operativos["referenciaProveedor"]:
         operativos["referenciaProveedor"] = _texto(referencia)
 
+    # La clave de deduplicación se deriva de la descripción estándar para que
+    # la identidad del artículo no dependa de descripciones libres.
+    descripcion_estandar = operativos["descripcionEstandarizada"]
+    clave_uso = normalizar_clave(descripcion_estandar) or descripcion_clave
+
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -87,7 +96,7 @@ def obtener_o_crear_articulo(
         FROM inventarioUnico
         WHERE descripcionClave = ?
         """,
-        (descripcion_clave,),
+        (clave_uso,),
     )
     fila = cursor.fetchone()
 
@@ -96,19 +105,17 @@ def obtener_o_crear_articulo(
     if fila:
         articulo_id, codigo = fila
 
-        # Los datos de identidad se completan únicamente cuando están vacíos.
+        # La descripción se sincroniza siempre con Consolidado. Los demás
+        # datos de identidad se completan únicamente cuando están vacíos.
         # Los datos comerciales/ubicación sí respetan lo que el usuario acaba
         # de indicar en el formulario de inventariado.
         cursor.execute(
             """
             UPDATE inventarioUnico
-            SET descripcion = CASE
-                    WHEN descripcion IS NULL OR TRIM(descripcion) = ''
-                    THEN NULLIF(?, '') ELSE descripcion END,
-                descripcionEstandarizada = CASE
-                    WHEN descripcionEstandarizada IS NULL
-                         OR TRIM(descripcionEstandarizada) = ''
-                    THEN NULLIF(?, '') ELSE descripcionEstandarizada END,
+            SET descripcion = COALESCE(NULLIF(?, ''), descripcion),
+                descripcionEstandarizada = COALESCE(
+                    NULLIF(?, ''), descripcionEstandarizada
+                ),
                 referencia = CASE
                     WHEN referencia IS NULL OR TRIM(referencia) = ''
                     THEN NULLIF(?, '') ELSE referencia END,
@@ -157,8 +164,8 @@ def obtener_o_crear_articulo(
             WHERE id = ?
             """,
             (
-                _texto(descripcion),
-                operativos["descripcionEstandarizada"],
+                descripcion_estandar,
+                descripcion_estandar,
                 _texto(referencia),
                 operativos["referenciaProveedor"],
                 operativos["referenciaRepuesto"],
@@ -215,9 +222,9 @@ def obtener_o_crear_articulo(
                 'PENDIENTE', 'SIN_CONTAR')
         """,
         (
-            _texto(descripcion),
-            descripcion_clave,
-            operativos["descripcionEstandarizada"],
+            descripcion_estandar,
+            clave_uso,
+            descripcion_estandar,
             _texto(referencia),
             operativos["referenciaProveedor"],
             operativos["referenciaRepuesto"],

@@ -259,54 +259,75 @@
 
         <h2 class="h5 mb-4">Configuración Proveedor</h2>
 
-        <form method="post" class="mb-4">
-            <input type="hidden" name="accion" value="guardar_proveedor">
+        <form method="post" class="mb-4" id="form-proveedor">
+            <input type="hidden" name="accion" id="accion-proveedor" value="guardar_proveedor">
+            <input type="hidden" name="idProveedor" id="idProveedor" value="">
+
+            <div id="modo-edicion-proveedor" class="alert alert-info d-none" role="status">
+                Editando proveedor <strong id="texto-proveedor-editado"></strong>.
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" id="btn-cancelar-edicion">
+                    Cancelar edición
+                </button>
+            </div>
 
             <div class="row">
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">Nombre 1</label>
-                    <input type="text" name="nombre_proveedor" class="form-control" required>
+                    <label for="nombre_proveedor" class="form-label">Nombre 1</label>
+                    <input type="text" id="nombre_proveedor" name="nombre_proveedor"
+                           class="form-control" maxlength="500" required>
                 </div>
 
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">Nombre 2</label>
-                    <input type="text" name="nombre_proveedor_2" class="form-control" required>
+                    <label for="nombre_proveedor_2" class="form-label">Nombre 2</label>
+                    <input type="text" id="nombre_proveedor_2" name="nombre_proveedor_2"
+                           class="form-control" maxlength="100">
                 </div>
 
                 <div class="col-md-1 mb-3">
-                    <label class="form-label">Siglas</label>
-                    <input type="text" name="sigla" class="form-control" required>
+                    <label for="sigla" class="form-label">Siglas</label>
+                    <input type="text" id="sigla" name="sigla" class="form-control"
+                           maxlength="100" required
+                           style="text-transform: uppercase;">
                 </div>
 
                 <div class="col-md-4 mb-3">
-                    <label class="form-label">Correo de Facturas</label>
-                    <input type="email" name="correo_facturas" class="form-control" required>
+                    <label for="correo_facturas" class="form-label">Correo de Facturas</label>
+                    <input type="email" id="correo_facturas" name="correo_facturas"
+                           class="form-control" maxlength="500" required>
                 </div>
 
                 <div class="col-md-1 mb-3">
-                    <label class="form-label">Prefijo</label>
-                    <input type="text" name="prefijo" class="form-control" required>
+                    <label for="prefijo" class="form-label">Prefijo</label>
+                    <input type="text" id="prefijo" name="prefijo" class="form-control"
+                           maxlength="20" required>
                 </div>
 
                 <div class="col-md-2 mb-3">
-                    <label class="form-label">NIT</label>
-                    <input type="text" name="nit" class="form-control" required>
+                    <label for="nit" class="form-label">NIT</label>
+                    <input type="text" id="nit" name="nit" class="form-control" required>
                 </div>
 
                 <div class="col-md-2 mb-3">
-                    <label class="form-label">Ciudad</label>
-                    <input type="text" name="ciudad" class="form-control">
+                    <label for="ciudad" class="form-label">Ciudad</label>
+                    <input type="text" id="ciudad" name="ciudad" class="form-control"
+                           maxlength="100">
                 </div>
 
                 <div class="col-md-3 mb-3">
-                    <label class="form-label">Teléfono</label>
-                    <input type="text" name="telefono" class="form-control">
+                    <label for="telefono" class="form-label">Teléfono</label>
+                    <input type="text" id="telefono" name="telefono" class="form-control">
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">
-                Registrar Proveedor
-            </button>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary" id="btn-guardar-proveedor">
+                    Registrar Proveedor
+                </button>
+                <button type="button" class="btn btn-outline-secondary d-none"
+                        id="btn-cancelar-edicion-2">
+                    Cancelar
+                </button>
+            </div>
 
             {% if mensaje %}
                 <div class="alert alert-info mt-3">{{ mensaje }}</div>
@@ -314,22 +335,47 @@
 
         </form>
 
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <label for="filtro-proveedores" class="form-label mb-0">Buscar proveedor</label>
+            <div class="input-group" style="max-width: 360px;">
+                <span class="input-group-text">{{ icono('buscar') }}</span>
+                <input type="search" id="filtro-proveedores" class="form-control"
+                       placeholder="Nombre, NIT o sigla" autocomplete="off">
+                <button type="button" class="btn btn-outline-secondary" id="limpiar-filtro-proveedores">
+                    Limpiar
+                </button>
+            </div>
+        </div>
+        <div class="small text-muted mb-2" id="conteo-proveedores"></div>
+
         <div class="tabla-scroll"><table class="table table-sm table-striped tabla-config">
             <thead>
                 <tr>
+                    <th>ID</th>
                     <th>Nombre 1</th>
                     <th>Nombre 2</th>
                     <th>Sigla</th>
-                    <th>Correo Faturas</th>
-                    <th>Prefijo</th>  
-                    <th>NIT</th> 
+                    <th>Correo Facturas</th>
+                    <th>Prefijo</th>
+                    <th>NIT</th>
                     <th>Ciudad</th>
-                    <th>Telefono</th>
+                    <th>Teléfono</th>
+                    <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="tabla-proveedores">
                 {% for t in proveedores %}
-                <tr>
+                <tr class="fila-proveedor"
+                    data-id="{{ t[0] }}"
+                    data-nombre="{{ t[1] or '' }}"
+                    data-nombre2="{{ t[2] or '' }}"
+                    data-sigla="{{ t[3] or '' }}"
+                    data-correo="{{ t[4] or '' }}"
+                    data-prefijo="{{ t[5] or '' }}"
+                    data-nit="{{ t[6] if t[6] is not none else '' }}"
+                    data-ciudad="{{ t[7] or '' }}"
+                    data-telefono="{{ t[8] if t[8] is not none else '' }}"
+                    data-busqueda="{{ ((t[1] or '') ~ ' ' ~ (t[2] or '') ~ ' ' ~ (t[3] or '') ~ ' ' ~ (t[6] if t[6] is not none else ''))|lower }}">
                     <td>{{ t[0] }}</td>
                     <td>{{ t[1] }}</td>
                     <td>{{ t[2] }}</td>
@@ -338,8 +384,20 @@
                     <td>{{ t[5] }}</td>
                     <td>{{ t[6] }}</td>
                     <td>{{ t[7] }}</td>
+                    <td>{{ t[8] }}</td>
+                    <td class="text-nowrap">
+                        <button type="button" class="btn btn-sm btn-outline-primary btn-editar-proveedor"
+                                data-id="{{ t[0] }}">
+                            {{ icono('editar') }} Editar
+                        </button>
+                    </td>
                 </tr>
                 {% endfor %}
+                <tr id="fila-sin-proveedores" class="d-none">
+                    <td colspan="10" class="text-center text-muted py-3">
+                        No hay proveedores que coincidan con la búsqueda.
+                    </td>
+                </tr>
             </tbody>
         </table></div>
 
@@ -563,6 +621,142 @@
 
 <!-- Specific Page JS goes HERE  -->
 {% block javascripts %}
+<script>
+(function () {
+    "use strict";
+
+    var form = document.getElementById("form-proveedor");
+    if (!form) { return; }
+
+    var accion = document.getElementById("accion-proveedor");
+    var idProveedor = document.getElementById("idProveedor");
+    var banner = document.getElementById("modo-edicion-proveedor");
+    var textoEditado = document.getElementById("texto-proveedor-editado");
+    var btnGuardar = document.getElementById("btn-guardar-proveedor");
+    var btnCancelar1 = document.getElementById("btn-cancelar-edicion");
+    var btnCancelar2 = document.getElementById("btn-cancelar-edicion-2");
+
+    var campos = {
+        nombre_proveedor: "nombre",
+        nombre_proveedor_2: "nombre2",
+        sigla: "sigla",
+        correo_facturas: "correo",
+        prefijo: "prefijo",
+        nit: "nit",
+        ciudad: "ciudad",
+        telefono: "telefono"
+    };
+
+    function entrarModoRegistro() {
+        form.reset();
+        accion.value = "guardar_proveedor";
+        idProveedor.value = "";
+        banner.classList.add("d-none");
+        btnGuardar.textContent = "Registrar Proveedor";
+        btnGuardar.classList.remove("btn-warning");
+        btnGuardar.classList.add("btn-primary");
+        btnCancelar2.classList.add("d-none");
+    }
+
+    function entrarModoEdicion(fila) {
+        accion.value = "actualizar_proveedor";
+        idProveedor.value = fila.dataset.id || "";
+
+        Object.keys(campos).forEach(function (campo) {
+            var input = document.getElementById(campo);
+            if (input) {
+                input.value = fila.dataset[campos[campo]] || "";
+            }
+        });
+
+        textoEditado.textContent = (fila.dataset.nombre || "") +
+            " (ID " + (fila.dataset.id || "") + ")";
+        banner.classList.remove("d-none");
+        btnGuardar.textContent = "Actualizar Proveedor";
+        btnGuardar.classList.remove("btn-primary");
+        btnGuardar.classList.add("btn-warning");
+        btnCancelar2.classList.remove("d-none");
+        form.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.getElementById("nombre_proveedor").focus();
+    }
+
+    Array.prototype.forEach.call(
+        document.querySelectorAll(".btn-editar-proveedor"),
+        function (boton) {
+            boton.addEventListener("click", function () {
+                var fila = boton.closest("tr");
+                if (fila) {
+                    entrarModoEdicion(fila);
+                }
+            });
+        }
+    );
+
+    [btnCancelar1, btnCancelar2].forEach(function (boton) {
+        if (boton) {
+            boton.addEventListener("click", entrarModoRegistro);
+        }
+    });
+
+    function normalizar(texto) {
+        return (texto || "")
+            .toString()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    var filtro = document.getElementById("filtro-proveedores");
+    var limpiar = document.getElementById("limpiar-filtro-proveedores");
+    var conteo = document.getElementById("conteo-proveedores");
+    var sinResultados = document.getElementById("fila-sin-proveedores");
+    var filas = Array.prototype.slice.call(
+        document.querySelectorAll("#tabla-proveedores .fila-proveedor")
+    );
+
+    function aplicarFiltro() {
+        var consulta = normalizar(filtro ? filtro.value : "");
+        var visibles = 0;
+
+        filas.forEach(function (fila) {
+            var texto = normalizar(fila.dataset.busqueda || "");
+            var coincide = !consulta || texto.indexOf(consulta) !== -1;
+            fila.style.display = coincide ? "" : "none";
+            if (coincide) { visibles += 1; }
+        });
+
+        if (sinResultados) {
+            sinResultados.classList.toggle(
+                "d-none",
+                !(filas.length > 0 && visibles === 0)
+            );
+        }
+        if (conteo) {
+            conteo.textContent = consulta
+                ? visibles + " de " + filas.length + " proveedor(es)"
+                : filas.length + " proveedor(es) registrado(s)";
+        }
+    }
+
+    if (filtro) {
+        filtro.addEventListener("input", aplicarFiltro);
+    }
+    if (limpiar) {
+        limpiar.addEventListener("click", function () {
+            if (filtro) {
+                filtro.value = "";
+                filtro.focus();
+            }
+            aplicarFiltro();
+        });
+    }
+
+    aplicarFiltro();
+})();
+</script>
+
 <script>
 (function () {
     var cuerpo = document.getElementById("cola-impresion");

@@ -176,9 +176,9 @@ class BaseIntegracion(unittest.TestCase):
         self.assertEqual(articulo["proveedor"], "MOTORES JAPONESES SAS")
 
     # ------------------------------------------------------------------
-    # 2. Artículo existente: sólo completa vacíos
+    # 2. Artículo existente: sincroniza descripción, completa vacíos
     # ------------------------------------------------------------------
-    def test_articulo_existente_solo_completa_vacios(self):
+    def test_articulo_existente_sincroniza_descripcion(self):
         descripcion = "PASTILLA FRENO DELANTERA TOYOTA HILUX"
         clave = normalizar_clave(descripcion)
 
@@ -211,7 +211,11 @@ class BaseIntegracion(unittest.TestCase):
         servicio.inventariar_consolidado(self.ruta, [identificador])
 
         articulo = self.fila_inventario(inventario_id)
-        self.assertEqual(articulo["descripcionEstandarizada"], "DESCRIPCION MANUAL VALIDA")
+        # La descripción siempre se sincroniza con la estándar de Consolidado.
+        self.assertEqual(articulo["descripcion"], descripcion)
+        self.assertEqual(articulo["descripcionEstandarizada"], descripcion)
+        self.assertEqual(articulo["descripcionClave"], clave)
+        # Los demás campos existentes se conservan.
         self.assertEqual(articulo["marcaArticulo"], "MARCA MANUAL")
         self.assertEqual(articulo["referenciaProveedor"], "REF-MANUAL")
         # Los campos vacíos sí se completan desde Consolidado.
@@ -517,6 +521,102 @@ class BaseIntegracion(unittest.TestCase):
         total = conn.execute("SELECT COUNT(*) FROM inventarioUnico").fetchone()[0]
         conn.close()
         self.assertEqual(total, 1)
+
+
+    # ------------------------------------------------------------------
+    # 14. Alineación histórica de descripciones con Consolidado
+    # ------------------------------------------------------------------
+    def test_alinear_descripciones_historicas_simula_y_aplica(self):
+        identificador = self.crear_consolidado()
+        servicio.inventariar_consolidado(self.ruta, [identificador])
+
+        fila = self.fila_consolidado(identificador)
+        articulo_id = fila["idInventarioUnico"]
+
+        conn = self.conectar()
+        conn.execute(
+            """
+            UPDATE inventarioUnico
+            SET descripcion = 'DESCRIPCION VIEJA',
+                descripcionEstandarizada = 'DESCRIPCION VIEJA',
+                descripcionClave = 'DESCRIPCION VIEJA'
+            WHERE id = ?
+            """,
+            (articulo_id,),
+        )
+        conn.commit()
+        conn.close()
+
+        simulacion = servicio.alinear_descripciones_historicas(self.ruta)
+        self.assertFalse(simulacion["aplicado"])
+        self.assertEqual(simulacion["actualizados"], 1)
+
+        sin_cambios = self.fila_inventario(articulo_id)
+        self.assertEqual(sin_cambios["descripcion"], "DESCRIPCION VIEJA")
+
+        aplicado = servicio.alinear_descripciones_historicas(
+            self.ruta, aplicar=True
+        )
+        self.assertTrue(aplicado["aplicado"])
+        self.assertEqual(aplicado["actualizados"], 1)
+
+        actualizado = self.fila_inventario(articulo_id)
+        self.assertEqual(
+            actualizado["descripcion"], fila["descripcionEstandarizada"]
+        )
+        self.assertEqual(
+            actualizado["descripcionEstandarizada"],
+            fila["descripcionEstandarizada"],
+        )
+        self.assertEqual(
+            actualizado["descripcionClave"],
+            normalizar_clave(fila["descripcionEstandarizada"]),
+        )
+
+    def test_alinear_descripciones_omite_colision_de_clave(self):
+        identificador = self.crear_consolidado()
+        servicio.inventariar_consolidado(self.ruta, [identificador])
+
+        fila = self.fila_consolidado(identificador)
+        articulo_id = fila["idInventarioUnico"]
+        clave_estandar = normalizar_clave(fila["descripcionEstandarizada"])
+
+        conn = self.conectar()
+        conn.execute(
+            """
+            UPDATE inventarioUnico
+            SET descripcion = 'DESCRIPCION VIEJA',
+                descripcionEstandarizada = 'DESCRIPCION VIEJA',
+                descripcionClave = 'CLAVE VIEJA'
+            WHERE id = ?
+            """,
+            (articulo_id,),
+        )
+        # Otro artículo ya ocupa la clave estándar.
+        conn.execute(
+            """
+            INSERT INTO inventarioUnico (
+                descripcion, descripcionClave, descripcionEstandarizada,
+                cantidad, proveedor, fechaActualizacion, estadoEtiquetado,
+                estadoConteo
+            ) VALUES ('OTRO ARTICULO', ?, 'OTRO ARTICULO', 0, '',
+                      '2026-01-01', 'PENDIENTE', 'SIN_CONTAR')
+            """,
+            (clave_estandar,),
+        )
+        conn.commit()
+        conn.close()
+
+        resultado = servicio.alinear_descripciones_historicas(
+            self.ruta, aplicar=True
+        )
+
+        self.assertEqual(resultado["actualizados"], 0)
+        self.assertEqual(resultado["omitidos"], 1)
+        self.assertEqual(
+            self.fila_inventario(articulo_id)["descripcion"],
+            "DESCRIPCION VIEJA",
+        )
 
 
 if __name__ == "__main__":

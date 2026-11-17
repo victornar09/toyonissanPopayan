@@ -168,6 +168,8 @@
                                     {% set motivo = 'Estado no calculado' %}
                                 {% endif %}
                                 {% set permitido = codigo_estado == 'PERMITIDO' %}
+                                {% set datos_est = est.get('datos_estandarizados') if est else None %}
+                                {% set descripcion_mostrar = (datos_est.get('descripcionEstandarizada') if datos_est else '') or descripcion %}
 
                                 {% set valor_iva = valor_unitario * 1.19 %}
                                 {% set valor_publico_sugerido = ((valor_unitario * 1.19) * 1.5) | round(-3) %}
@@ -209,10 +211,11 @@
                                     </td>
 
                                     <td class="col-descripcion">
-                                        <textarea name="descripcion_{{ item_id }}" class="form-control form-control-sm descripcion-factura"
-                                                  rows="2" autocomplete="off"
-                                                  title="{{ descripcion }}"
-                                                  {% if codigo_estado == 'INVENTARIADO' %}readonly{% endif %}>{{ descripcion }}</textarea>
+                                        <div class="descripcion-factura descripcion-estandar"
+                                             title="{{ descripcion_mostrar }}">
+                                            {{ descripcion_mostrar }}
+                                        </div>
+                                        <div class="small text-muted">Descripción estándar de consolidado</div>
                                     </td>
 
                                     <td class="col-dinero">
@@ -240,9 +243,14 @@
                             Solo se inventarían líneas <strong>NO INVENTARIADO PERMITIDO</strong> con coincidencia válida en <strong>consolidado</strong>.
                         </div>
                     </div>
-                    <button type="submit" id="btnInventariar" class="btn btn-primary" disabled>
-                        {{ icono('caja-abajo') }} Inventariar seleccionados
-                    </button>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="submit" id="btnInventariar" class="btn btn-primary" disabled>
+                            {{ icono('caja-abajo') }} Inventariar seleccionados
+                        </button>
+                        <button type="button" id="btnInventariarImprimir" class="btn btn-outline-primary" disabled>
+                            {{ icono('etiqueta') }} Inventariar e imprimir
+                        </button>
+                    </div>
                 </div>
 
                 <input type="hidden" name="template_id" id="template_id">
@@ -256,7 +264,7 @@
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">Seleccionar etiqueta</h5>
+                            <h5 class="modal-title">Inventariar e imprimir</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
@@ -267,16 +275,94 @@
                                     <option value="{{ t[0] }}">{{ t[1] }}</option>
                                 {% endfor %}
                             </select>
+                            <div class="form-text">
+                                Si no necesitas imprimir ahora, usa “Inventariar seleccionados”.
+                                Podrás imprimir después desde la sección de artículos inventariados.
+                            </div>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                            <button type="button" class="btn btn-primary" id="confirmarInventario">Inventariar</button>
+                            <button type="button" class="btn btn-primary" id="confirmarInventario">Inventariar e imprimir</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- =============================== -->
+    <!-- 4. Imprimir etiquetas después   -->
+    <!-- =============================== -->
+    {% if lineas_inventariadas %}
+    <div class="card border-0 shadow-sm mb-4" id="imprimir-inventariados">
+        <div class="card-header bg-white py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span class="seccion-titulo">{{ icono('etiqueta') }} Imprimir etiquetas de artículos inventariados</span>
+            <span class="badge bg-light text-dark border">{{ lineas_inventariadas|length }} artículo{{ '' if lineas_inventariadas|length == 1 else 's' }}</span>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{{ url_for('facturas.imprimir_etiquetas') }}" id="formImprimirEtiquetas">
+                <input type="hidden" name="id_factura" value="{{ id_factura }}">
+                {% if return_to %}
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                {% endif %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-3">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="celda-check">
+                                    <input type="checkbox" id="selectAllInventariados" class="form-check-input"
+                                           title="Seleccionar todos" aria-label="Seleccionar todos los artículos inventariados">
+                                </th>
+                                <th>Referencia</th>
+                                <th>Descripción estándar</th>
+                                <th class="text-center">Cantidad</th>
+                                <th>Código de barras</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for linea in lineas_inventariadas %}
+                            <tr>
+                                <td class="celda-check">
+                                    <input type="checkbox" class="form-check-input check-inventariado"
+                                           name="lineas" value="{{ linea.id }}"
+                                           {% if not linea.codigo %}disabled title="Sin código de barras"{% endif %}
+                                           aria-label="Seleccionar {{ linea.referencia }}">
+                                </td>
+                                <td>{{ linea.referencia }}</td>
+                                <td>{{ linea.descripcion }}</td>
+                                <td class="text-center">{{ linea.cantidad }}</td>
+                                <td>
+                                    {% if linea.codigo %}
+                                        <span class="font-monospace">{{ linea.codigo }}</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Sin código</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="plantillaImpresionDiferida">Etiqueta BarTender</label>
+                        <select id="plantillaImpresionDiferida" name="template_id" class="form-select" required>
+                            <option value="">-- Selecciona una etiqueta --</option>
+                            {% for t in bartender_templates %}
+                                <option value="{{ t[0] }}">{{ t[1] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6 text-md-end">
+                        <button type="submit" class="btn btn-primary" id="btnImprimirEtiquetas" disabled>
+                            {{ icono('etiqueta') }} Imprimir seleccionados
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
 {% else %}
     <div class="alert alert-warning">No se encontró la factura.</div>
@@ -320,6 +406,10 @@
             const btnInventariar = document.getElementById("btnInventariar");
             if (btnInventariar) {
                 btnInventariar.disabled = seleccionados === 0;
+            }
+            const btnInventariarImprimir = document.getElementById("btnInventariarImprimir");
+            if (btnInventariarImprimir) {
+                btnInventariarImprimir.disabled = seleccionados === 0;
             }
         }
 
@@ -396,19 +486,18 @@
         });
 
         if (formInventario) {
-            formInventario.addEventListener("submit", function (e) {
-                e.preventDefault();
-
-                const seleccionados = document.querySelectorAll(".itemCheckbox:checked:not(:disabled)[data-permitido='1']");
-
-                if (seleccionados.length === 0) {
-                    alert("Selecciona al menos un artículo con estado NO INVENTARIADO PERMITIDO");
-                    return;
-                }
-
-                const modal = new bootstrap.Modal(document.getElementById('modalEtiqueta'));
-                modal.show();
-            });
+            const btnInventariarImprimir = document.getElementById("btnInventariarImprimir");
+            if (btnInventariarImprimir) {
+                btnInventariarImprimir.addEventListener("click", function () {
+                    const seleccionados = document.querySelectorAll(".itemCheckbox:checked:not(:disabled)[data-permitido='1']");
+                    if (seleccionados.length === 0) {
+                        alert("Selecciona al menos un artículo con estado NO INVENTARIADO PERMITIDO");
+                        return;
+                    }
+                    const modal = new bootstrap.Modal(document.getElementById('modalEtiqueta'));
+                    modal.show();
+                });
+            }
         }
 
         const confirmarInventario = document.getElementById("confirmarInventario");
@@ -425,6 +514,39 @@
                 document.getElementById("template_id").value = templateId;
                 document.getElementById("formInventario").submit();
             });
+        }
+
+        // Impresión/reimpresión diferida de líneas ya inventariadas.
+        const formImprimirEtiquetas = document.getElementById("formImprimirEtiquetas");
+        if (formImprimirEtiquetas) {
+            const checksInv = Array.from(document.querySelectorAll(".check-inventariado"));
+            const btnImprimir = document.getElementById("btnImprimirEtiquetas");
+            const selectAllInv = document.getElementById("selectAllInventariados");
+
+            function actualizarImpresion() {
+                const seleccionados = checksInv.filter(cb => !cb.disabled && cb.checked).length;
+                if (btnImprimir) {
+                    btnImprimir.disabled = seleccionados === 0;
+                }
+                if (selectAllInv) {
+                    const permitidos = checksInv.filter(cb => !cb.disabled);
+                    const marcados = permitidos.filter(cb => cb.checked).length;
+                    selectAllInv.checked = permitidos.length > 0 && marcados === permitidos.length;
+                    selectAllInv.indeterminate = marcados > 0 && marcados < permitidos.length;
+                }
+            }
+
+            if (selectAllInv) {
+                selectAllInv.addEventListener("change", function () {
+                    checksInv.forEach(cb => {
+                        if (!cb.disabled) cb.checked = selectAllInv.checked;
+                    });
+                    actualizarImpresion();
+                });
+            }
+
+            checksInv.forEach(cb => cb.addEventListener("change", actualizarImpresion));
+            actualizarImpresion();
         }
     });
 

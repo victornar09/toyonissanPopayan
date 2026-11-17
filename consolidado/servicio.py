@@ -1155,7 +1155,12 @@ def etiquetas_reimpresion(ruta_db, ids):
                 continue
             cur.execute(
                 """
-                SELECT iu.codigoBarras, iu.descripcion,
+                SELECT iu.codigoBarras,
+                       COALESCE(
+                           NULLIF(c.descripcionEstandarizada, ''),
+                           NULLIF(iu.descripcionEstandarizada, ''),
+                           iu.descripcion
+                       ) AS descripcion,
                        iu.precioVentaCifrado
                 FROM consolidado c
                 JOIN inventarioUnico iu ON iu.id = c.idInventarioUnico
@@ -1175,6 +1180,150 @@ def etiquetas_reimpresion(ruta_db, ids):
                     "cantidad": 1,
                 }
             )
+    finally:
+        conn.close()
+
+    return resultado
+
+
+def alinear_descripciones_historicas(ruta_db, aplicar=False):
+    """Alinea descripciones de artículos ya inventariados con Consolidado.
+
+    Alcance y reglas:
+
+    * Sólo artículos vinculados a un registro de ``consolidado`` con
+      ``descripcionEstandarizada`` no vacía.
+    * Se sincronizan ``descripcion``, ``descripcionEstandarizada`` y
+      ``descripcionClave`` con esa descripción estándar.
+    * Si la clave nueva ya pertenece a otro artículo de ``inventarioUnico``,
+      se omite para no violar el índice único ``idx_inventario_clave``.
+    * Si un mismo artículo tiene varias descripciones estándar distintas en
+      Consolidado, se omite (requiere revisión manual).
+    * Por defecto es una simulación; con ``aplicar=True`` confirma los cambios.
+    """
+
+    resultado = {
+        "aplicado": bool(aplicar),
+        "revisados": 0,
+        "actualizados": 0,
+        "omitidos": 0,
+        "detalle": [],
+    }
+
+    conn = db.conectar(ruta_db)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT iu.id,
+                   iu.descripcion,
+                   iu.descripcionEstandarizada,
+                   iu.descripcionClave,
+                   c.id,
+                   c.descripcionEstandarizada
+            FROM consolidado c
+            JOIN inventarioUnico iu ON iu.id = c.idInventarioUnico
+            WHERE c.descripcionEstandarizada IS NOT NULL
+              AND TRIM(c.descripcionEstandarizada) <> ''
+            ORDER BY iu.id, c.id
+            """
+        )
+
+        agrupados = {}
+        for fila in cur.fetchall():
+            agrupados.setdefault(fila[0], []).append(fila)
+
+        hoy = date.today().strftime("%Y-%m-%d")
+        for articulo_id, filas in agrupados.items():
+            resultado["revisados"] += 1
+            estandares = {
+                _texto(fila[5]) for fila in filas if _texto(fila[5])
+            }
+
+            if len(estandares) > 1:
+                resultado["omitidos"] += 1
+                resultado["detalle"].append(
+                    {
+                        "id": articulo_id,
+                        "motivo": "Descripciones estándar en conflicto.",
+                        "descripciones": sorted(estandares),
+                    }
+                )
+                continue
+
+            desc_estandar = next(iter(estandares))
+            desc_actual = _texto(filas[0][1])
+            desc_est_actual = _texto(filas[0][2])
+            clave_actual = _texto(filas[0][3])
+            clave_nueva = normalizar_clave(desc_estandar)
+
+            if not clave_nueva:
+                resultado["omitidos"] += 1
+                resultado["detalle"].append(
+                    {
+                        "id": articulo_id,
+                        "motivo": "Descripción estándar no normalizable.",
+                    }
+                )
+                continue
+
+            if (
+                desc_actual == desc_estandar
+                and desc_est_actual == desc_estandar
+                and clave_actual == clave_nueva
+            ):
+                continue
+
+            cur.execute(
+                """
+                SELECT id
+                FROM inventarioUnico
+                WHERE descripcionClave = ? AND id <> ?
+                """,
+                (clave_nueva, articulo_id),
+            )
+            conflicto = cur.fetchone()
+            if conflicto:
+                resultado["omitidos"] += 1
+                resultado["detalle"].append(
+                    {
+                        "id": articulo_id,
+                        "motivo": "La clave estándar ya pertenece a otro artículo.",
+                        "idConflicto": conflicto[0],
+                    }
+                )
+                continue
+
+            if aplicar:
+                cur.execute(
+                    """
+                    UPDATE inventarioUnico
+                    SET descripcion = ?,
+                        descripcionEstandarizada = ?,
+                        descripcionClave = ?,
+                        fechaActualizacion = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        desc_estandar,
+                        desc_estandar,
+                        clave_nueva,
+                        hoy,
+                        articulo_id,
+                    ),
+                )
+
+            resultado["actualizados"] += 1
+            resultado["detalle"].append(
+                {
+                    "id": articulo_id,
+                    "anterior": desc_actual,
+                    "nueva": desc_estandar,
+                }
+            )
+
+        if aplicar:
+            conn.commit()
     finally:
         conn.close()
 
