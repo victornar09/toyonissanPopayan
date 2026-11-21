@@ -619,12 +619,16 @@ def buscar_articulos():
     )
 
     # Filtros sin paginación, para conservarlos en la paginación y en el
-    # enlace "Volver a resultados" del detalle.
-    parametros = {
-        clave: valor
-        for clave, valor in request.args.to_dict(flat=True).items()
-        if clave != 'pagina' and valor
-    }
+    # enlace "Volver a resultados" del detalle. Se conservan los parámetros
+    # repetidos (varios términos de descripción) usando listas.
+    parametros = {}
+    for clave, valores in request.args.to_dict(flat=False).items():
+        if clave == 'pagina':
+            continue
+        limpios = [valor for valor in valores if valor]
+        if not limpios:
+            continue
+        parametros[clave] = limpios[0] if len(limpios) == 1 else limpios
 
     return render_template(
         'facturas/buscar_articulos.html',

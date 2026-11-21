@@ -53,13 +53,65 @@ def _fecha_valida(valor):
         return ""
 
 
+_NOMBRES_DESCRIPCION = (
+    "descripcion",
+    "descripcion[]",
+    "terminos_descripcion",
+    "terminos_descripcion[]",
+)
+
+
+def _valores(args, nombre):
+    """Devuelve todos los valores de un parámetro, aunque se repita.
+
+    Acepta tanto ``MultiDict`` (request.args) como diccionarios simples con
+    cadenas o listas, para facilitar las pruebas y usos internos.
+    """
+
+    obtener_lista = getattr(args, "getlist", None)
+    if callable(obtener_lista):
+        try:
+            return list(obtener_lista(nombre))
+        except (KeyError, TypeError):
+            return []
+
+    valor = args.get(nombre)
+    if valor is None:
+        return []
+    if isinstance(valor, (list, tuple)):
+        return list(valor)
+    return [valor]
+
+
+def _terminos_descripcion(args):
+    """Extrae, limpia y deduplica los términos de descripción recibidos."""
+
+    terminos = []
+    vistos = set()
+    for nombre in _NOMBRES_DESCRIPCION:
+        for valor in _valores(args, nombre):
+            texto = _texto(valor)
+            if not texto:
+                continue
+            clave = normalizar_clave(texto) or texto.lower()
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            terminos.append(texto)
+    return terminos
+
+
 def extraer_filtros(args):
     estado = _ALIAS_ESTADO.get(
         _texto(args.get("estado")).lower(), "todos"
     )
+    descripciones = _terminos_descripcion(args)
     return {
         "referencia": _texto(args.get("referencia")),
-        "descripcion": _texto(args.get("descripcion")),
+        # Se conserva el valor simple para compatibilidad con la plantilla y
+        # con llamadas que esperaban un único término.
+        "descripcion": descripciones[0] if descripciones else "",
+        "descripciones": descripciones,
         "proveedor": _texto(args.get("proveedor")),
         "id_factura": _texto(args.get("id_factura")),
         "fecha_desde": _fecha_valida(args.get("fecha_desde")),
@@ -105,7 +157,15 @@ def _where(filtros):
             filtros["referencia"],
         )
 
-    if filtros["descripcion"]:
+    if filtros.get("descripciones"):
+        for termino in filtros["descripciones"]:
+            _agregar_tokens(
+                condiciones,
+                parametros,
+                ["descripcion_item", "descripcion_estandarizada"],
+                termino,
+            )
+    elif filtros.get("descripcion"):
         _agregar_tokens(
             condiciones,
             parametros,

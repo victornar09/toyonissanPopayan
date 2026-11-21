@@ -25,10 +25,31 @@
                 <input type="search" class="form-control" id="referencia" name="referencia"
                        value="{{ filtros.referencia }}" placeholder="Exacta o parcial" autocomplete="off">
             </div>
-            <div class="col-12 col-md-8 col-xl-3">
-                <label for="descripcion" class="form-label">Descripción del artículo</label>
-                <input type="search" class="form-control" id="descripcion" name="descripcion"
-                       value="{{ filtros.descripcion }}" placeholder="Ej. bomba clutch" autocomplete="off">
+            <div class="col-12">
+                <label class="form-label" for="descripcion-0">Descripción del artículo</label>
+                <div id="terminosDescripcion" class="d-flex flex-column gap-2">
+                    {% for termino in (filtros.descripciones if filtros.descripciones else ['']) %}
+                    <div class="input-group termino-descripcion">
+                        <span class="input-group-text termino-numero">{{ loop.index }}</span>
+                        <input type="search" class="form-control termino-descripcion-input"
+                               id="descripcion-{{ loop.index0 }}" name="descripcion"
+                               value="{{ termino }}" placeholder="Ej. disco clutch" autocomplete="off"
+                               aria-label="Término de descripción {{ loop.index }}">
+                        <button type="button" class="btn btn-outline-secondary btn-quitar-termino"
+                                title="Quitar este término">
+                            Quitar
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnAgregarTermino">
+                        + Agregar término
+                    </button>
+                    <span class="text-muted small">
+                        Cada término adicional se combina con los anteriores y reduce los resultados.
+                    </span>
+                </div>
             </div>
             <div class="col-12 col-md-6 col-xl-2">
                 <label for="proveedor" class="form-label">Proveedor</label>
@@ -68,7 +89,7 @@
             </div>
         </div>
         <p class="text-muted small mb-0 mt-2">
-            La descripción ignora tildes, mayúsculas, signos y espacios repetidos. Puedes combinar palabras en cualquier orden.
+            La descripción ignora tildes, mayúsculas, signos y espacios repetidos. Puedes combinar palabras en cualquier orden; cada término adicional filtra sobre la descripción original y la estandarizada.
         </p>
     </form>
 </div>
@@ -211,3 +232,90 @@
 </div>
 {% endif %}
 {% endblock %}
+{% block javascripts %}
+<script>
+(function () {
+    "use strict";
+
+    var contenedor = document.getElementById("terminosDescripcion");
+    var botonAgregar = document.getElementById("btnAgregarTermino");
+    if (!contenedor || !botonAgregar) { return; }
+
+    function numeroTerminos() {
+        return contenedor.querySelectorAll(".termino-descripcion").length;
+    }
+
+    function renumerar() {
+        var bloques = contenedor.querySelectorAll(".termino-descripcion");
+        Array.prototype.forEach.call(bloques, function (bloque, indice) {
+            var numero = bloque.querySelector(".termino-numero");
+            var input = bloque.querySelector(".termino-descripcion-input");
+            if (numero) { numero.textContent = indice + 1; }
+            if (input) {
+                input.id = "descripcion-" + indice;
+                input.setAttribute("aria-label", "Término de descripción " + (indice + 1));
+            }
+        });
+    }
+
+    function crearTermino(valor) {
+        var bloque = document.createElement("div");
+        bloque.className = "input-group termino-descripcion";
+
+        var numero = document.createElement("span");
+        numero.className = "input-group-text termino-numero";
+        bloque.appendChild(numero);
+
+        var input = document.createElement("input");
+        input.type = "search";
+        input.className = "form-control termino-descripcion-input";
+        input.name = "descripcion";
+        input.autocomplete = "off";
+        input.placeholder = "Ej. disco clutch";
+        input.value = valor || "";
+        bloque.appendChild(input);
+
+        var quitar = document.createElement("button");
+        quitar.type = "button";
+        quitar.className = "btn btn-outline-secondary btn-quitar-termino";
+        quitar.title = "Quitar este término";
+        quitar.textContent = "Quitar";
+        bloque.appendChild(quitar);
+
+        return bloque;
+    }
+
+    function agregarTermino(valor, enfocar) {
+        contenedor.appendChild(crearTermino(valor));
+        renumerar();
+        if (enfocar) {
+            var inputs = contenedor.querySelectorAll(".termino-descripcion-input");
+            var ultimo = inputs[inputs.length - 1];
+            if (ultimo) { ultimo.focus(); }
+        }
+    }
+
+    botonAgregar.addEventListener("click", function () {
+        agregarTermino("", true);
+    });
+
+    contenedor.addEventListener("click", function (evento) {
+        var boton = evento.target.closest(".btn-quitar-termino");
+        if (!boton) { return; }
+
+        var bloque = boton.closest(".termino-descripcion");
+        if (bloque) {
+            bloque.parentNode.removeChild(bloque);
+        }
+
+        if (numeroTerminos() === 0) {
+            agregarTermino("", false);
+        } else {
+            renumerar();
+        }
+    });
+
+    renumerar();
+})();
+</script>
+{% endblock javascripts %}

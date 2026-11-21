@@ -533,5 +533,145 @@ class TestPaginaYConsulta(BaseBusqueda):
         self.assertEqual(antes, despues)
 
 
+class TestDescripcionAcumulativa(BaseBusqueda):
+    def test_multiples_terminos_aplican_and(self):
+        self.crear_factura("F-001")
+        self.crear_linea(
+            "F-001", referencia="REF-1",
+            descripcion="DISCO CLUTCH TOYOTA HILUX",
+        )
+        self.crear_linea(
+            "F-001", referencia="REF-2",
+            descripcion="DISCO CLUTCH NISSAN FRONTIER",
+        )
+        self.crear_linea(
+            "F-001", referencia="REF-3",
+            descripcion="BOMBA DE FRENO TOYOTA",
+        )
+
+        resultado = self.buscar(descripcion=["disco clutch", "toyota"])
+
+        self.assertEqual(resultado["total"], 1)
+        self.assertEqual(resultado["filas"][0]["referencia"], "REF-1")
+
+    def test_tercer_termino_reduce_de_nuevo(self):
+        self.crear_factura("F-001")
+        self.crear_linea(
+            "F-001", referencia="REF-1",
+            descripcion="DISCO CLUTCH TOYOTA HILUX 2015",
+        )
+        self.crear_linea(
+            "F-001", referencia="REF-2",
+            descripcion="DISCO CLUTCH TOYOTA HILUX 2020",
+        )
+
+        primero = self.buscar(descripcion=["disco clutch", "toyota"])
+        self.assertEqual(primero["total"], 2)
+
+        segundo = self.buscar(
+            descripcion=["disco clutch", "toyota", "2015"]
+        )
+        self.assertEqual(segundo["total"], 1)
+        self.assertEqual(segundo["filas"][0]["referencia"], "REF-1")
+
+    def test_un_solo_termino_sigue_funcionando(self):
+        self.crear_factura("F-001")
+        self.crear_linea("F-001", descripcion="BOMBA DE FRENO DELANTERA")
+
+        resultado = self.buscar(descripcion="bomba freno")
+
+        self.assertEqual(resultado["total"], 1)
+        self.assertEqual(resultado["filas"][0]["descripcion_item"],
+                         "BOMBA DE FRENO DELANTERA")
+
+    def test_terminos_vacios_se_ignoran(self):
+        self.crear_factura("F-001")
+        self.crear_linea("F-001", descripcion="DISCO CLUTCH TOYOTA")
+
+        resultado = self.buscar(
+            descripcion=["", "   ", "disco", "", "toyota"]
+        )
+
+        self.assertEqual(resultado["total"], 1)
+
+    def test_sin_terminos_no_filtra_por_descripcion(self):
+        self.crear_factura("F-001")
+        self.crear_linea("F-001", referencia="REF-1", descripcion="DISCO")
+        self.crear_linea("F-001", referencia="REF-2", descripcion="BOMBA")
+
+        self.assertEqual(self.buscar()["total"], 2)
+        self.assertEqual(self.buscar(descripcion=["", "  "])["total"], 2)
+
+    def test_extraer_filtros_compatibilidad_y_variantes(self):
+        from werkzeug.datastructures import MultiDict
+
+        simple = busqueda.extraer_filtros(MultiDict([("descripcion", "disco")]))
+        self.assertEqual(simple["descripciones"], ["disco"])
+        self.assertEqual(simple["descripcion"], "disco")
+
+        repetido = busqueda.extraer_filtros(
+            MultiDict(
+                [("descripcion", "disco"), ("descripcion", "clutch")]
+            )
+        )
+        self.assertEqual(repetido["descripciones"], ["disco", "clutch"])
+
+        con_corchetes = busqueda.extraer_filtros(
+            MultiDict(
+                [
+                    ("descripcion[]", "disco"),
+                    ("terminos_descripcion[]", "toyota"),
+                ]
+            )
+        )
+        self.assertEqual(
+            con_corchetes["descripciones"], ["disco", "toyota"]
+        )
+
+    def test_terminos_se_combinan_con_otros_filtros(self):
+        self.crear_factura("F-001", proveedor="PROVEEDOR ALFA SAS")
+        self.crear_linea(
+            "F-001", referencia="REF-1",
+            descripcion="DISCO CLUTCH TOYOTA HILUX",
+        )
+        self.crear_factura("F-002", proveedor="PROVEEDOR BETA SAS")
+        self.crear_linea(
+            "F-002", referencia="REF-2",
+            descripcion="DISCO CLUTCH TOYOTA HILUX",
+        )
+
+        resultado = self.buscar(
+            descripcion=["disco", "toyota"],
+            proveedor="ALFA",
+        )
+
+        self.assertEqual(resultado["total"], 1)
+        self.assertEqual(resultado["filas"][0]["id_factura"], "F-001")
+
+    def test_paginacion_conserva_terminos_repetidos(self):
+        self.crear_factura("F-001")
+        for numero in range(60):
+            self.crear_linea(
+                "F-001",
+                referencia=f"REF-{numero:03d}",
+                descripcion=f"ARTICULO NUMERO {numero:03d}",
+            )
+
+        with patch("db.ruta_bd_activa", return_value=self.ruta):
+            respuesta = self._cliente().get(
+                "/facturas/buscar-articulos"
+                "?descripcion=articulo&descripcion=numero&pagina=2"
+            )
+
+        self.assertEqual(respuesta.status_code, 200)
+        html = respuesta.get_data(as_text=True)
+        self.assertIn("60 coincidencias", html)
+        self.assertEqual(html.count('name="descripcion"'), 2)
+        self.assertIn("descripcion=articulo", html)
+        self.assertIn("descripcion=numero", html)
+        self.assertIn("pagina=2", html)
+        self.assertIn("Página 2 de 2", html)
+
+
 if __name__ == "__main__":
     unittest.main()
